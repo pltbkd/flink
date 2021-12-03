@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,18 +16,19 @@
  * limitations under the License.
  */
 
-package org.apache.flink.util.function;
+package org.apache.flink.api.connector.sink2;
 
-import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.api.connector.sink.Committer;
+import org.apache.flink.streaming.api.datastream.DataStream;
 
-import java.io.Serializable;
-import java.util.function.Supplier;
+/** This utility class provides building blocks for custom topologies. */
+public class StandardSinkTopologies {
+    private StandardSinkTopologies() {}
 
-/**
- * A serializable {@link Supplier}.
- *
- * @param <T> the type of results supplied by this supplier
- */
-@PublicEvolving
-@FunctionalInterface
-public interface SerializableSupplier<T> extends Supplier<T>, Serializable {}
+    /** Adds a global committer to the pipeline that runs */
+    public static <CommT> void addGlobalCommitter(
+            DataStream<CommittableWithLineage<CommT>> committables,
+            Committer<CommT> globalCommitter) {
+        // TODO
+    }
+}

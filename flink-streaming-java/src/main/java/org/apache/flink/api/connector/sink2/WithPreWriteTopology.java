@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,18 +16,21 @@
  * limitations under the License.
  */
 
-package org.apache.flink.util.function;
+package org.apache.flink.api.connector.sink2;
 
-import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.annotation.Experimental;
+import org.apache.flink.streaming.api.datastream.DataStream;
 
-import java.io.Serializable;
-import java.util.function.Supplier;
+/** Allows expert users to implement a custom topology before {@link SinkWriter}. */
+@Experimental
+public interface WithPreWriteTopology<InputT> extends Sink<InputT> {
 
-/**
- * A serializable {@link Supplier}.
- *
- * @param <T> the type of results supplied by this supplier
- */
-@PublicEvolving
-@FunctionalInterface
-public interface SerializableSupplier<T> extends Supplier<T>, Serializable {}
+    /**
+     * Adds an arbitrary topology before the writer. The topology may be used to repartition the
+     * data.
+     *
+     * @param inputDataStream the stream of input records.
+     * @return the custom topology before {@link SinkWriter}.
+     */
+    DataStream<InputT> addPreWriteTopology(DataStream<InputT> inputDataStream);
+}
