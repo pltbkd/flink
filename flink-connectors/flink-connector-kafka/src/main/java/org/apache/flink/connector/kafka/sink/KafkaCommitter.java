@@ -17,8 +17,7 @@
 
 package org.apache.flink.connector.kafka.sink;
 
-import org.apache.flink.api.connector.sink.Committer;
-import org.apache.flink.util.FlinkRuntimeException;
+import org.apache.flink.api.connector.sink2.Committer;
 
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.errors.InvalidTxnStateException;
@@ -32,12 +31,9 @@ import javax.annotation.Nullable;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.Properties;
-
-import static org.apache.flink.util.ExceptionUtils.firstOrSuppressed;
 
 /**
  * Committer implementation for {@link KafkaSink}
@@ -60,10 +56,10 @@ class KafkaCommitter implements Committer<KafkaCommittable>, Closeable {
     }
 
     @Override
-    public List<KafkaCommittable> commit(List<KafkaCommittable> committables) throws IOException {
-        List<KafkaCommittable> retryableCommittables = new ArrayList<>();
-        Exception collected = null;
-        for (KafkaCommittable committable : committables) {
+    public void commit(Collection<CommitRequest<KafkaCommittable>> committables)
+            throws IOException, InterruptedException {
+        for (CommitRequest<KafkaCommittable> request : committables) {
+            KafkaCommittable committable = request.getCommittable();
             final String transactionalId = committable.getTransactionalId();
             LOG.debug("Committing Kafka transaction {}", transactionalId);
             Optional<Recyclable<? extends FlinkKafkaInternalProducer<?, ?>>> recyclable =
@@ -79,7 +75,7 @@ class KafkaCommitter implements Committer<KafkaCommittable>, Closeable {
             } catch (RetriableException e) {
                 LOG.warn(
                         "Encountered retriable exception while committing {}.", transactionalId, e);
-                retryableCommittables.add(committable);
+                request.retryLater();
                 continue;
             } catch (ProducerFencedException e) {
                 // initTransaction has been called on this transaction before
@@ -95,6 +91,7 @@ class KafkaCommitter implements Committer<KafkaCommittable>, Closeable {
                         ProducerConfig.TRANSACTION_TIMEOUT_CONFIG,
                         kafkaProducerConfig.getProperty(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG),
                         e);
+                request.failedWithKnownReason();
             } catch (InvalidTxnStateException e) {
                 // This exception only occurs when aborting after a commit or vice versa.
                 // It does not appear on double commits or double aborts.
@@ -103,26 +100,22 @@ class KafkaCommitter implements Committer<KafkaCommittable>, Closeable {
                                 + "Most likely the transaction has been aborted for some reason. Please check the Kafka logs for more details.",
                         committable,
                         e);
+                request.failedWithKnownReason();
             } catch (UnknownProducerIdException e) {
                 LOG.error(
                         "Unable to commit transaction ({}) " + UNKNOWN_PRODUCER_ID_ERROR_MESSAGE,
                         committable,
                         e);
+                request.failedWithKnownReason();
             } catch (Exception e) {
                 LOG.error(
                         "Transaction ({}) encountered error and data has been potentially lost.",
                         committable,
                         e);
-                collected = firstOrSuppressed(e, collected);
+                request.failedWithUnknownReason();
             }
             recyclable.ifPresent(Recyclable::close);
-            if (collected != null) {
-                throw new FlinkRuntimeException(
-                        "Some committables were not committed and committing failed with:",
-                        collected);
-            }
         }
-        return retryableCommittables;
     }
 
     @Override

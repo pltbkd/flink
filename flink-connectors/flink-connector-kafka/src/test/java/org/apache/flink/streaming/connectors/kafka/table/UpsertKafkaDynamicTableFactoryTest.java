@@ -35,7 +35,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 import org.apache.flink.streaming.api.transformations.SourceTransformation;
 import org.apache.flink.streaming.connectors.kafka.config.StartupMode;
-import org.apache.flink.streaming.runtime.operators.sink.SinkOperatorFactory;
+import org.apache.flink.streaming.runtime.operators.sink.WriterOperatorFactory;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.catalog.Column;
@@ -248,9 +248,9 @@ public class UpsertKafkaDynamicTableFactoryTest extends TestLogger {
                                         new RuntimeException(
                                                 "Expected operator with name Sink in stream graph."))
                         .getOperatorFactory();
-        assertThat(sinkOperatorFactory, instanceOf(SinkOperatorFactory.class));
+        assertThat(sinkOperatorFactory, instanceOf(WriterOperatorFactory.class));
         assertThat(
-                ((SinkOperatorFactory) sinkOperatorFactory).getSink(),
+                ((WriterOperatorFactory) sinkOperatorFactory).getSink(),
                 instanceOf(ReducingUpsertSink.class));
     }
 

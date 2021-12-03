@@ -19,15 +19,17 @@ package org.apache.flink.connector.kafka.sink;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.operators.MailboxExecutor;
+import org.apache.flink.api.common.operators.ProcessingTimeService;
 import org.apache.flink.api.common.serialization.SerializationSchema;
-import org.apache.flink.api.connector.sink.Sink;
-import org.apache.flink.api.connector.sink.SinkWriter;
+import org.apache.flink.api.connector.sink2.Sink;
+import org.apache.flink.api.connector.sink2.Sink.InitContext;
+import org.apache.flink.api.connector.sink2.StatefulSink.StatefulSinkWriter;
+import org.apache.flink.api.connector.sink2.TwoPhaseCommittingSink;
 import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.MetricUtil;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.metrics.groups.SinkWriterMetricGroup;
-import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
 import org.apache.flink.streaming.connectors.kafka.internals.metrics.KafkaMetricMutableWrapper;
 import org.apache.flink.util.FlinkRuntimeException;
 
@@ -47,11 +49,13 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.function.Consumer;
 
@@ -65,7 +69,9 @@ import static org.apache.flink.util.Preconditions.checkState;
  *
  * @param <IN> The type of the input elements.
  */
-class KafkaWriter<IN> implements SinkWriter<IN, KafkaCommittable, KafkaWriterState> {
+class KafkaWriter<IN>
+        implements StatefulSinkWriter<IN, KafkaWriterState>,
+                TwoPhaseCommittingSink.PrecommittingSinkWriter<IN, KafkaCommittable> {
 
     private static final Logger LOG = LoggerFactory.getLogger(KafkaWriter.class);
     private static final String KAFKA_PRODUCER_METRIC_NAME = "KafkaProducer";
@@ -84,7 +90,7 @@ class KafkaWriter<IN> implements SinkWriter<IN, KafkaCommittable, KafkaWriterSta
     private final Map<String, KafkaMetricMutableWrapper> previouslyCreatedMetrics = new HashMap<>();
     private final SinkWriterMetricGroup metricGroup;
     private final Counter numBytesOutCounter;
-    private final Sink.ProcessingTimeService timeService;
+    private final ProcessingTimeService timeService;
     private final boolean disabledMetrics;
     private final Counter numRecordsOutCounter;
 
@@ -124,7 +130,7 @@ class KafkaWriter<IN> implements SinkWriter<IN, KafkaCommittable, KafkaWriterSta
             Sink.InitContext sinkInitContext,
             KafkaRecordSerializationSchema<IN> recordSerializer,
             SerializationSchema.InitializationContext schemaContext,
-            List<KafkaWriterState> recoveredStates) {
+            Collection<KafkaWriterState> recoveredStates) {
         this.deliveryGuarantee = checkNotNull(deliveryGuarantee, "deliveryGuarantee");
         this.kafkaProducerConfig = checkNotNull(kafkaProducerConfig, "kafkaProducerConfig");
         this.transactionalIdPrefix = checkNotNull(transactionalIdPrefix, "transactionalIdPrefix");
@@ -157,7 +163,7 @@ class KafkaWriter<IN> implements SinkWriter<IN, KafkaCommittable, KafkaWriterSta
         this.lastCheckpointId =
                 sinkInitContext
                         .getRestoredCheckpointId()
-                        .orElse(CheckpointIDCounter.INITIAL_CHECKPOINT_ID - 1);
+                        .orElse(InitContext.INITIAL_CHECKPOINT_ID - 1);
         if (deliveryGuarantee == DeliveryGuarantee.EXACTLY_ONCE) {
             abortLingeringTransactions(
                     checkNotNull(recoveredStates, "recoveredStates"), lastCheckpointId + 1);
@@ -184,16 +190,19 @@ class KafkaWriter<IN> implements SinkWriter<IN, KafkaCommittable, KafkaWriterSta
         numRecordsOutCounter.inc();
     }
 
-    @Override
-    public List<KafkaCommittable> prepareCommit(boolean flush) {
-        if (deliveryGuarantee != DeliveryGuarantee.NONE || flush) {
+    public void flush(boolean endOfInput) {
+        if (deliveryGuarantee != DeliveryGuarantee.NONE || endOfInput) {
             currentProducer.flush();
         }
+    }
+
+    @Override
+    public List<KafkaCommittable> prepareCommit() {
         if (deliveryGuarantee == DeliveryGuarantee.EXACTLY_ONCE) {
             final List<KafkaCommittable> committables =
                     Collections.singletonList(
                             KafkaCommittable.of(currentProducer, producerPool::add));
-            LOG.debug("Committing {} committables, final commit={}.", committables, flush);
+            LOG.debug("Committing {} committables.", committables);
             return committables;
         }
         return Collections.emptyList();
@@ -244,11 +253,12 @@ class KafkaWriter<IN> implements SinkWriter<IN, KafkaCommittable, KafkaWriterSta
     }
 
     void abortLingeringTransactions(
-            List<KafkaWriterState> recoveredStates, long startCheckpointId) {
+            Collection<KafkaWriterState> recoveredStates, long startCheckpointId) {
         List<String> prefixesToAbort = Lists.newArrayList(transactionalIdPrefix);
 
-        if (!recoveredStates.isEmpty()) {
-            KafkaWriterState lastState = recoveredStates.get(0);
+        Optional<KafkaWriterState> lastStateOpt = recoveredStates.stream().findFirst();
+        if (lastStateOpt.isPresent()) {
+            KafkaWriterState lastState = lastStateOpt.get();
             if (!lastState.getTransactionalIdPrefix().equals(transactionalIdPrefix)) {
                 prefixesToAbort.add(lastState.getTransactionalIdPrefix());
                 LOG.warn(
