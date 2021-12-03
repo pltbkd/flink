@@ -53,7 +53,7 @@ import java.util.List;
 import static org.apache.flink.util.ExceptionUtils.firstOrSuppressed;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
-class ElasticsearchWriter<IN> implements SinkWriter<IN, Void, Void> {
+class ElasticsearchWriter<IN> implements SinkWriter<IN> {
 
     private static final Logger LOG = LoggerFactory.getLogger(ElasticsearchWriter.class);
 
@@ -125,15 +125,14 @@ class ElasticsearchWriter<IN> implements SinkWriter<IN, Void, Void> {
     }
 
     @Override
-    public List<Void> prepareCommit(boolean flush) throws IOException, InterruptedException {
+    public void flush(boolean endOfInput) throws IOException, InterruptedException {
         checkpointInProgress = true;
-        while (pendingActions != 0 && (flushOnCheckpoint || flush)) {
+        while (pendingActions != 0 && (flushOnCheckpoint || endOfInput)) {
             bulkProcessor.flush();
             LOG.info("Waiting for the response of {} pending actions.", pendingActions);
             mailboxExecutor.yield();
         }
         checkpointInProgress = false;
-        return Collections.emptyList();
     }
 
     @VisibleForTesting
