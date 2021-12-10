@@ -52,8 +52,11 @@ import java.util.OptionalLong;
  * @param <CommT> The type of information needed to commit data staged by the sink
  * @param <WriterStateT> The type of the sink writer's state
  * @param <GlobalCommT> The type of the aggregated committable
+ * @deprecated Soft-deprecated. Will be removed in Flink 2.X. Please migrate to {@link
+ *     org.apache.flink.api.connector.sink2.Sink}.
  */
 @Experimental
+@Deprecated
 public interface Sink<InputT, CommT, WriterStateT, GlobalCommT> extends Serializable {
 
     /**
