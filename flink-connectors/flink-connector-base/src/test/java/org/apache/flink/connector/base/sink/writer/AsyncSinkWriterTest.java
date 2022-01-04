@@ -18,7 +18,9 @@
 package org.apache.flink.connector.base.sink.writer;
 
 import org.apache.flink.api.common.operators.MailboxExecutor;
-import org.apache.flink.api.connector.sink.Sink;
+import org.apache.flink.api.common.operators.ProcessingTimeService;
+import org.apache.flink.api.common.serialization.SerializationSchema.InitializationContext;
+import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.groups.OperatorIOMetricGroup;
@@ -30,6 +32,7 @@ import org.apache.flink.streaming.runtime.tasks.StreamTaskActionExecutor;
 import org.apache.flink.streaming.runtime.tasks.TestProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxExecutorImpl;
 import org.apache.flink.streaming.runtime.tasks.mailbox.TaskMailboxImpl;
+import org.apache.flink.util.InitContextInitializationContextAdapter;
 import org.apache.flink.util.UserCodeClassLoader;
 import org.apache.flink.util.function.RunnableWithException;
 import org.apache.flink.util.function.ThrowingRunnable;
@@ -140,7 +143,7 @@ public class AsyncSinkWriterTest {
             sink.write(String.valueOf(i));
         }
         assertEquals(20, res.size());
-        assertEquals(Arrays.asList(20, 21, 22), new ArrayList<>(sink.snapshotState().get(0)));
+        assertEquals(Arrays.asList(20, 21, 22), new ArrayList<>(sink.snapshotState(1).get(0)));
     }
 
     @Test
@@ -176,7 +179,7 @@ public class AsyncSinkWriterTest {
         for (int i = 0; i < 23; i++) {
             sink.write(String.valueOf(i));
         }
-        sink.prepareCommit(true);
+        sink.flush(true);
         assertEquals(23, res.size());
     }
 
@@ -192,7 +195,7 @@ public class AsyncSinkWriterTest {
                         .simulateFailures(false)
                         .build();
         sink.write(String.valueOf(0));
-        sink.prepareCommit(true);
+        sink.flush(true);
         assertEquals(1, res.size());
     }
 
@@ -210,15 +213,15 @@ public class AsyncSinkWriterTest {
 
         sink.write("25");
         sink.write("55");
-        assertEquals(Arrays.asList(25, 55), new ArrayList<>(sink.snapshotState().get(0)));
+        assertEquals(Arrays.asList(25, 55), new ArrayList<>(sink.snapshotState(0L).get(0)));
         assertEquals(0, res.size());
 
         sink.write("75");
-        assertEquals(Arrays.asList(), new ArrayList<>(sink.snapshotState().get(0)));
+        assertEquals(Arrays.asList(), new ArrayList<>(sink.snapshotState(1L).get(0)));
         assertEquals(3, res.size());
     }
 
-    public void writeFiveRecordsWithOneFailingThenCallPrepareCommitWithFlushing()
+    public void writeFiveRecordsWithOneFailingThenCallflushWithFlushing()
             throws IOException, InterruptedException {
         AsyncSinkWriterImpl sink =
                 new AsyncSinkWriterImplBuilder()
@@ -234,22 +237,22 @@ public class AsyncSinkWriterTest {
         sink.write("75");
         sink.write("95");
         sink.write("955");
-        assertEquals(Arrays.asList(95, 955), new ArrayList<>(sink.snapshotState().get(0)));
-        sink.prepareCommit(true);
-        assertEquals(Arrays.asList(), new ArrayList<>(sink.snapshotState().get(0)));
+        assertEquals(Arrays.asList(95, 955), new ArrayList<>(sink.snapshotState(0L).get(0)));
+        sink.flush(true);
+        assertEquals(Arrays.asList(), new ArrayList<>(sink.snapshotState(1L).get(0)));
     }
 
     @Test
     public void testThatSnapshotsAreTakenOfBufferCorrectlyBeforeAndAfterManualFlush()
             throws IOException, InterruptedException {
-        writeFiveRecordsWithOneFailingThenCallPrepareCommitWithFlushing();
+        writeFiveRecordsWithOneFailingThenCallflushWithFlushing();
         assertEquals(5, res.size());
     }
 
     @Test
     public void metricsAreLoggedEachTimeSubmitRequestEntriesIsCalled()
             throws IOException, InterruptedException {
-        writeFiveRecordsWithOneFailingThenCallPrepareCommitWithFlushing();
+        writeFiveRecordsWithOneFailingThenCallflushWithFlushing();
         assertEquals(5, sinkInitContext.getNumRecordsOutCounter().getCount());
         assertEquals(20, sinkInitContext.getNumBytesOutCounter().getCount());
     }
@@ -335,11 +338,11 @@ public class AsyncSinkWriterTest {
                 sink, "535", Arrays.asList(25, 55, 965, 75, 95, 45), Arrays.asList(35, 535));
 
         // Checkpoint occurs
-        sink.prepareCommit(true);
+        sink.flush(true);
 
         // Everything is saved
         assertEquals(Arrays.asList(25, 55, 965, 75, 95, 45, 550, 955, 35, 535), res);
-        assertEquals(0, sink.snapshotState().get(0).size());
+        assertEquals(0, sink.snapshotState(0L).get(0).size());
     }
 
     @Test
@@ -370,7 +373,7 @@ public class AsyncSinkWriterTest {
         sink.write("505");
         assertTrue(res.contains(550));
         assertTrue(res.contains(645));
-        sink.prepareCommit(true);
+        sink.flush(true);
         assertTrue(res.contains(545));
         assertTrue(res.contains(535));
         assertTrue(res.contains(515));
@@ -438,7 +441,7 @@ public class AsyncSinkWriterTest {
             throws IOException, InterruptedException {
         sink.write(x);
         assertEquals(y, res);
-        assertEquals(z, new ArrayList<>(sink.snapshotState().get(0)));
+        assertEquals(z, new ArrayList<>(sink.snapshotState(0L).get(0)));
     }
 
     @Test
@@ -595,7 +598,7 @@ public class AsyncSinkWriterTest {
         sink.write("1"); // A timer is registered here to elapse at t=100
         assertEquals(0, res.size());
         tpts.setCurrentTime(10L);
-        sink.prepareCommit(true);
+        sink.flush(true);
         assertEquals(1, res.size());
         tpts.setCurrentTime(20L); // At t=20, we write a new element that should not trigger another
         sink.write("2"); // timer to be registered. If it is, it should elapse at t=120s.
@@ -657,7 +660,7 @@ public class AsyncSinkWriterTest {
         tpts.setCurrentTime(0L);
         sink.write("1");
         tpts.setCurrentTime(50L);
-        sink.prepareCommit(true);
+        sink.flush(true);
         assertEquals(1, res.size());
         tpts.setCurrentTime(200L);
     }
@@ -1007,20 +1010,8 @@ public class AsyncSinkWriterTest {
         }
 
         @Override
-        public Sink.ProcessingTimeService getProcessingTimeService() {
-            return new Sink.ProcessingTimeService() {
-                @Override
-                public long getCurrentProcessingTime() {
-                    return processingTimeService.getCurrentProcessingTime();
-                }
-
-                @Override
-                public void registerProcessingTimer(
-                        long time, ProcessingTimeCallback processingTimerCallback) {
-                    processingTimeService.registerTimer(
-                            time, processingTimerCallback::onProcessingTime);
-                }
-            };
+        public ProcessingTimeService getProcessingTimeService() {
+            return processingTimeService;
         }
 
         @Override
@@ -1057,6 +1048,12 @@ public class AsyncSinkWriterTest {
 
         private Counter getNumBytesOutCounter() {
             return metricGroup.getIOMetricGroup().getNumBytesOutCounter();
+        }
+
+        @Override
+        public InitializationContext asSerializationSchemaInitializationContext() {
+            return new InitContextInitializationContextAdapter(
+                    getUserCodeClassLoader(), () -> metricGroup.addGroup("user"));
         }
     }
 

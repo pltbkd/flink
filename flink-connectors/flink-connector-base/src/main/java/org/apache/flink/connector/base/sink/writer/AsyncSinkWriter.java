@@ -19,8 +19,9 @@ package org.apache.flink.connector.base.sink.writer;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.operators.MailboxExecutor;
-import org.apache.flink.api.connector.sink.Sink;
-import org.apache.flink.api.connector.sink.SinkWriter;
+import org.apache.flink.api.common.operators.ProcessingTimeService;
+import org.apache.flink.api.connector.sink2.Sink;
+import org.apache.flink.api.connector.sink2.StatefulSink.StatefulSinkWriter;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.groups.SinkWriterMetricGroup;
 import org.apache.flink.util.Preconditions;
@@ -31,7 +32,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.function.Consumer;
@@ -51,10 +51,10 @@ import java.util.stream.Collectors;
  */
 @PublicEvolving
 public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable>
-        implements SinkWriter<InputT, Void, Collection<RequestEntryT>> {
+        implements StatefulSinkWriter<InputT, Collection<RequestEntryT>> {
 
     private final MailboxExecutor mailboxExecutor;
-    private final Sink.ProcessingTimeService timeService;
+    private final ProcessingTimeService timeService;
 
     /* The timestamp of the previous batch of records was sent from this sink. */
     private long lastSendTimestamp = 0;
@@ -252,15 +252,14 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
     }
 
     private void registerCallback() {
-        Sink.ProcessingTimeService.ProcessingTimeCallback ptc =
+        ProcessingTimeService.ProcessingTimeCallback ptc =
                 instant -> {
                     existsActiveTimerCallback = false;
                     while (!bufferedRequestEntries.isEmpty()) {
                         flush();
                     }
                 };
-        timeService.registerProcessingTimer(
-                timeService.getCurrentProcessingTime() + maxTimeInBufferMS, ptc);
+        timeService.registerTimer(timeService.getCurrentProcessingTime() + maxTimeInBufferMS, ptc);
         existsActiveTimerCallback = true;
     }
 
@@ -384,15 +383,13 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * <p>To this end, all in-flight requests need to completed before proceeding with the commit.
      */
     @Override
-    public List<Void> prepareCommit(boolean flush) {
+    public void flush(boolean endOfInput) throws IOException, InterruptedException {
         while (inFlightRequestsCount > 0 || bufferedRequestEntries.size() > 0) {
             mailboxExecutor.tryYield();
-            if (flush) {
+            if (endOfInput) {
                 flush();
             }
         }
-
-        return Collections.emptyList();
     }
 
     /**
@@ -402,7 +399,7 @@ public abstract class AsyncSinkWriter<InputT, RequestEntryT extends Serializable
      * a failure/restart of the application.
      */
     @Override
-    public List<Collection<RequestEntryT>> snapshotState() {
+    public List<Collection<RequestEntryT>> snapshotState(long checkpointId) {
         return Arrays.asList(
                 bufferedRequestEntries.stream()
                         .map(RequestEntryWrapper::getRequestEntry)

@@ -17,14 +17,13 @@
 
 package org.apache.flink.connector.base.sink;
 
-import org.apache.flink.api.connector.sink.SinkWriter;
 import org.apache.flink.connector.base.sink.writer.AsyncSinkWriter;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Consumer;
 
 /** Dummy destination that records write events. */
@@ -52,8 +51,7 @@ public class ArrayListAsyncSink extends AsyncSinkBase<String, Integer> {
     }
 
     @Override
-    public SinkWriter<String, Void, Collection<Integer>> createWriter(
-            InitContext context, List<Collection<Integer>> states) {
+    public AsyncSinkWriter<String, Integer> createWriter(InitContext context) {
         /* SinkWriter implementing {@code submitRequestEntries} that is used to define the persistence
          * logic into {@code ArrayListDestination}.
          */
@@ -86,7 +84,28 @@ public class ArrayListAsyncSink extends AsyncSinkBase<String, Integer> {
     }
 
     @Override
-    public Optional<SimpleVersionedSerializer<Collection<Integer>>> getWriterStateSerializer() {
-        return Optional.empty();
+    public StatefulSinkWriter<String, Collection<Integer>> restoreWriter(
+            InitContext context, Collection<Collection<Integer>> recoveredState) {
+        return createWriter(context);
+    }
+
+    @Override
+    public SimpleVersionedSerializer<Collection<Integer>> getWriterStateSerializer() {
+        return new SimpleVersionedSerializer<Collection<Integer>>() {
+            @Override
+            public int getVersion() {
+                return 0;
+            }
+
+            @Override
+            public byte[] serialize(Collection<Integer> obj) {
+                return new byte[0];
+            }
+
+            @Override
+            public Collection<Integer> deserialize(int version, byte[] serialized) {
+                return new ArrayList<>();
+            }
+        };
     }
 }
