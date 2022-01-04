@@ -82,8 +82,20 @@ public class CommittableMessageTypeInfo<CommT> extends TypeInformation<Committab
 
     @Override
     public TypeSerializer<CommittableMessage<CommT>> createSerializer(ExecutionConfig config) {
-        return new SimpleVersionedSerializerTypeSerializerProxy<>(
-                () -> new CommittableMessageSerializer<>(committableSerializerFactory.get()));
+        // no copy, so that data from writer is directly going into committer while chaining
+        return new SimpleVersionedSerializerTypeSerializerProxy<CommittableMessage<CommT>>(
+                () -> new CommittableMessageSerializer<>(committableSerializerFactory.get())) {
+            @Override
+            public CommittableMessage<CommT> copy(CommittableMessage<CommT> from) {
+                return from;
+            }
+
+            @Override
+            public CommittableMessage<CommT> copy(
+                    CommittableMessage<CommT> from, CommittableMessage<CommT> reuse) {
+                return from;
+            }
+        };
     }
 
     @Override
@@ -104,12 +116,13 @@ public class CommittableMessageTypeInfo<CommT> extends TypeInformation<Committab
         }
         CommittableMessageTypeInfo<?> that = (CommittableMessageTypeInfo<?>) o;
         return Objects.equals(
-                committableSerializerFactory.get(), that.committableSerializerFactory.get());
+                committableSerializerFactory.get().getClass(),
+                that.committableSerializerFactory.get().getClass());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(committableSerializerFactory.get());
+        return Objects.hash(committableSerializerFactory.get().getClass());
     }
 
     @Override
