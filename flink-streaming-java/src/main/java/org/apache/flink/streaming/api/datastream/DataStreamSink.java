@@ -22,13 +22,33 @@ import org.apache.flink.annotation.Public;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.operators.SlotSharingGroup;
-import org.apache.flink.api.connector.sink.Sink;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.connector.sink2.CommittableMessage;
+import org.apache.flink.api.connector.sink2.CommittableMessageTypeInfo;
+import org.apache.flink.api.connector.sink2.Sink;
+import org.apache.flink.api.connector.sink2.TwoPhaseCommittingSink;
+import org.apache.flink.api.connector.sink2.WithPostCommitTopology;
+import org.apache.flink.api.connector.sink2.WithPreCommitTopology;
+import org.apache.flink.api.connector.sink2.WithPreWriteTopology;
 import org.apache.flink.api.dag.Transformation;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.StreamSink;
 import org.apache.flink.streaming.api.transformations.LegacySinkTransformation;
+import org.apache.flink.streaming.api.transformations.PartitionTransformation;
 import org.apache.flink.streaming.api.transformations.PhysicalTransformation;
 import org.apache.flink.streaming.api.transformations.SinkTransformation;
+import org.apache.flink.streaming.api.transformations.SinkV1Adapter;
+import org.apache.flink.streaming.api.transformations.StreamExchangeMode;
+import org.apache.flink.streaming.runtime.operators.sink.CommitterOperatorFactory;
+import org.apache.flink.streaming.runtime.operators.sink.WriterOperatorFactory;
+import org.apache.flink.streaming.runtime.partitioner.ForwardPartitioner;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 /**
  * A Stream Sink. This is used for emitting elements from a streaming topology.
@@ -40,32 +60,47 @@ public class DataStreamSink<T> {
 
     private final PhysicalTransformation<T> transformation;
 
-    @SuppressWarnings("unchecked")
-    protected DataStreamSink(DataStream<T> inputStream, StreamSink<T> operator) {
-        this.transformation =
-                (PhysicalTransformation<T>)
-                        new LegacySinkTransformation<>(
-                                inputStream.getTransformation(),
-                                "Unnamed",
-                                operator,
-                                inputStream.getExecutionEnvironment().getParallelism());
+    protected DataStreamSink(PhysicalTransformation<T> transformation) {
+        this.transformation = transformation;
     }
 
     @SuppressWarnings("unchecked")
-    protected DataStreamSink(DataStream<T> inputStream, Sink<T, ?, ?, ?> sink) {
-        transformation =
-                (PhysicalTransformation<T>)
-                        new SinkTransformation<>(
-                                inputStream.getTransformation(),
-                                sink,
-                                "Unnamed",
-                                inputStream.getExecutionEnvironment().getParallelism());
+    static <T> DataStreamSink<T> forSinkFunction(
+            DataStream<T> inputStream, SinkFunction<T> sinkFunction) {
+        StreamSink<T> sinkOperator = new StreamSink<>(sinkFunction);
+        PhysicalTransformation<T> transformation =
+                new LegacySinkTransformation<>(
+                        inputStream.getTransformation(),
+                        "Unnamed",
+                        sinkOperator,
+                        inputStream.getExecutionEnvironment().getParallelism());
         inputStream.getExecutionEnvironment().addOperator(transformation);
+        return new DataStreamSink<>(transformation);
+    }
+
+    @SuppressWarnings("unchecked")
+    static <T> DataStreamSink<T> forSink(DataStream<T> inputStream, Sink<T> sink) {
+        StreamExecutionEnvironment executionEnvironment = inputStream.getExecutionEnvironment();
+        SinkTransformation<T, T> transformation =
+                new SinkTransformation<>(
+                        inputStream.getTransformation(),
+                        inputStream.getType(),
+                        "Sink",
+                        executionEnvironment.getParallelism());
+        DataStreamSink<T> dataStreamSink = new DataStreamSink<>(transformation);
+        SinkExpander<T> sinkExpander = new SinkExpander<>(inputStream, sink, transformation);
+        executionEnvironment.registerTranslationListener(sinkExpander::expand);
+        return dataStreamSink;
+    }
+
+    public static <T> DataStreamSink<T> forSinkV1(
+            DataStream<T> inputStream, org.apache.flink.api.connector.sink.Sink<T, ?, ?, ?> sink) {
+        return forSink(inputStream, SinkV1Adapter.wrap(sink));
     }
 
     /** Returns the transformation that contains the actual sink operator of this sink. */
     @Internal
-    public Transformation<T> getTransformation() {
+    public Transformation<?> getTransformation() {
         return transformation;
     }
 
@@ -131,6 +166,10 @@ public class DataStreamSink<T> {
      */
     @PublicEvolving
     public DataStreamSink<T> setUidHash(String uidHash) {
+        if (!(transformation instanceof LegacySinkTransformation)) {
+            throw new UnsupportedOperationException(
+                    "Cannot set a custom UID hash on a non-legacy sink");
+        }
         transformation.setUidHash(uidHash);
         return this;
     }
@@ -247,5 +286,144 @@ public class DataStreamSink<T> {
     public DataStreamSink<T> slotSharingGroup(SlotSharingGroup slotSharingGroup) {
         transformation.setSlotSharingGroup(slotSharingGroup);
         return this;
+    }
+
+    /**
+     * Expands the FLIP-143 Sink to a subtopology. Each part of the topology is created after the
+     * previous part of the topology has been completely configured by the user. For example, if a
+     * user explicitly sets the parallelism of the sink, each part of the subtopology can rely on
+     * the input having that parallelism.
+     */
+    private static class SinkExpander<T> {
+        private final SinkTransformation<T, T> transformation;
+        private final Sink<T> sink;
+        private final DataStream<T> inputStream;
+        private final StreamExecutionEnvironment executionEnvironment;
+        private boolean expanded;
+
+        public SinkExpander(
+                DataStream<T> inputStream, Sink<T> sink, SinkTransformation<T, T> transformation) {
+            this.inputStream = inputStream;
+            this.executionEnvironment = inputStream.getExecutionEnvironment();
+            this.transformation = transformation;
+            this.sink = sink;
+        }
+
+        private void expand() {
+            if (expanded) {
+                // may be called twice for multi-staged application, make sure to expand only once
+                return;
+            }
+            expanded = true;
+
+            DataStream<T> prewritten = inputStream;
+            if (sink instanceof WithPreWriteTopology) {
+                prewritten =
+                        adjustTransformations(
+                                prewritten, ((WithPreWriteTopology<T>) sink)::addPreWriteTopology);
+            }
+
+            if (sink instanceof TwoPhaseCommittingSink) {
+                addCommittingTopology(sink, prewritten);
+            } else {
+                adjustTransformations(
+                        prewritten,
+                        input ->
+                                input.transform(
+                                        "Writer",
+                                        CommittableMessageTypeInfo.noOutput(),
+                                        new WriterOperatorFactory<>(sink)));
+            }
+        }
+
+        private <T, CommT> void addCommittingTopology(Sink<T> sink, DataStream<T> inputStream) {
+            TwoPhaseCommittingSink<T, CommT> committingSink =
+                    (TwoPhaseCommittingSink<T, CommT>) sink;
+            TypeInformation<CommittableMessage<CommT>> typeInformation =
+                    CommittableMessageTypeInfo.forCommittableSerializerFactory(
+                            committingSink::getCommittableSerializer);
+
+            DataStream<CommittableMessage<CommT>> written =
+                    adjustTransformations(
+                            inputStream,
+                            input ->
+                                    input.transform(
+                                            "Writer",
+                                            typeInformation,
+                                            new WriterOperatorFactory<>(sink)));
+
+            DataStream<CommittableMessage<CommT>> precommitted = addFailOverRegion(written);
+
+            if (sink instanceof WithPreCommitTopology) {
+                precommitted =
+                        adjustTransformations(
+                                precommitted,
+                                ((WithPreCommitTopology<T, CommT>) sink)::addPreCommitTopology);
+            }
+            DataStream<CommittableMessage<CommT>> committed =
+                    adjustTransformations(
+                            precommitted,
+                            pc ->
+                                    pc.transform(
+                                            "Committer",
+                                            typeInformation,
+                                            new CommitterOperatorFactory<>(committingSink)));
+            if (sink instanceof WithPostCommitTopology) {
+                DataStream<CommittableMessage<CommT>> postcommitted = addFailOverRegion(committed);
+                adjustTransformations(
+                        postcommitted,
+                        pc -> {
+                            ((WithPostCommitTopology<T, CommT>) sink).addPostCommitTopology(pc);
+                            return null;
+                        });
+            }
+        }
+
+        /**
+         * Adds a batch exchange that materializes the output first. This is a no-op in STREAMING.
+         */
+        private <T> DataStream<T> addFailOverRegion(DataStream<T> input) {
+            return new DataStream<>(
+                    executionEnvironment,
+                    new PartitionTransformation<>(
+                            input.getTransformation(),
+                            new ForwardPartitioner<>(),
+                            StreamExchangeMode.BATCH));
+        }
+
+        private <T, R> R adjustTransformations(
+                DataStream<T> inputStream, Function<DataStream<T>, R> action) {
+            int numTransformsBefore = executionEnvironment.getTransformations().size();
+            R result = action.apply(inputStream);
+            List<Transformation<?>> transformations = executionEnvironment.getTransformations();
+            List<Transformation<?>> expandedTransformations =
+                    transformations.subList(numTransformsBefore, transformations.size());
+            for (Transformation<?> subTransformation : expandedTransformations) {
+                concatProperty(subTransformation, Transformation::getName, Transformation::setName);
+                concatProperty(
+                        subTransformation,
+                        Transformation::getDescription,
+                        Transformation::setDescription);
+                concatProperty(subTransformation, Transformation::getUid, Transformation::setUid);
+
+                Optional<SlotSharingGroup> ssg = transformation.getSlotSharingGroup();
+                if (ssg.isPresent() && !subTransformation.getSlotSharingGroup().isPresent()) {
+                    transformation.setSlotSharingGroup(ssg.get());
+                }
+                subTransformation.setParallelism(transformation.getParallelism());
+            }
+            return result;
+        }
+
+        private void concatProperty(
+                Transformation<?> subTransformation,
+                Function<Transformation<?>, String> getter,
+                BiConsumer<Transformation<?>, String> setter) {
+            if (getter.apply(transformation) != null && getter.apply(subTransformation) != null) {
+                setter.accept(
+                        transformation,
+                        getter.apply(transformation) + ": " + getter.apply(subTransformation));
+            }
+        }
     }
 }

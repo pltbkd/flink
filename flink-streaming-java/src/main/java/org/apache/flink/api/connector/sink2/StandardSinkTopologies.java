@@ -18,8 +18,8 @@
 
 package org.apache.flink.api.connector.sink2;
 
-import org.apache.flink.api.connector.sink.Committer;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.util.function.SerializableSupplier;
 
 /** This utility class provides building blocks for custom topologies. */
 public class StandardSinkTopologies {
@@ -27,8 +27,8 @@ public class StandardSinkTopologies {
 
     /** Adds a global committer to the pipeline that runs */
     public static <CommT> void addGlobalCommitter(
-            DataStream<CommittableWithLineage<CommT>> committables,
-            Committer<CommT> globalCommitter) {
+            DataStream<CommittableMessage<CommT>> committables,
+            SerializableSupplier<Committer<CommT>> globalCommitterFactory) {
         // TODO
     }
 }
