@@ -113,6 +113,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.URI;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -121,6 +122,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -208,6 +210,8 @@ public class StreamExecutionEnvironment {
     protected final Configuration configuration;
 
     private final ClassLoader userClassloader;
+
+    private final Queue<TranslationListener> translationListeners = new ArrayDeque<>();
 
     private final List<JobListener> jobListeners = new ArrayList<>();
 
@@ -2022,6 +2026,12 @@ public class StreamExecutionEnvironment {
         jobListeners.add(jobListener);
     }
 
+    @Internal
+    public void registerTranslationListener(TranslationListener translationListener) {
+        checkNotNull(translationListener, "TranslationListener cannot be null");
+        translationListeners.add(translationListener);
+    }
+
     /** Clear all registered {@link JobListener}s. */
     @PublicEvolving
     public void clearJobListeners() {
@@ -2154,6 +2164,7 @@ public class StreamExecutionEnvironment {
     }
 
     private StreamGraphGenerator getStreamGraphGenerator(List<Transformation<?>> transformations) {
+        translationListeners.forEach(TranslationListener::preTranslation);
         if (transformations.size() <= 0) {
             throw new IllegalStateException(
                     "No operators defined in streaming topology. Cannot execute.");
@@ -2498,5 +2509,15 @@ public class StreamExecutionEnvironment {
             }
         }
         return (T) resolvedTypeInfo;
+    }
+
+    @Internal
+    public interface TranslationListener {
+        void preTranslation();
+    }
+
+    @Internal
+    public List<Transformation<?>> getTransformations() {
+        return transformations;
     }
 }
