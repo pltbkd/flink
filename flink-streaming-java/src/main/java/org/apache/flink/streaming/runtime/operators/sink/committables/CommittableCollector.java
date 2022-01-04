@@ -400,7 +400,6 @@ public class CommittableCollector<CommT> {
             state = RequestState.FAILED;
             // add metric later
             // let the user configure a strategy for failing and apply it here
-            throw new IllegalStateException("Failed to commit " + committable);
         }
 
         @Override
