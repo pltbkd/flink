@@ -136,7 +136,7 @@ class CommitterOperator<CommT> extends AbstractStreamOperator<CommittableMessage
     @Override
     public void notifyCheckpointComplete(long checkpointId) throws Exception {
         super.notifyCheckpointComplete(checkpointId);
-        lastCompletedCheckpointId = checkpointId;
+        lastCompletedCheckpointId = Math.max(lastCompletedCheckpointId, checkpointId);
         commitAndEmitCheckpoints();
     }
 
