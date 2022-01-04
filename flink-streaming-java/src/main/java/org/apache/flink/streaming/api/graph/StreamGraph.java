@@ -44,6 +44,7 @@ import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.operators.InternalTimeServiceManager;
+import org.apache.flink.streaming.api.operators.JobTypeAware;
 import org.apache.flink.streaming.api.operators.OutputFormatOperatorFactory;
 import org.apache.flink.streaming.api.operators.SourceOperatorFactory;
 import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
@@ -411,6 +412,10 @@ public class StreamGraph implements Pipeline {
 
         if (operatorFactory.isInputTypeConfigurable()) {
             operatorFactory.setInputType(inTypeInfo, executionConfig);
+        }
+
+        if (operatorFactory instanceof JobTypeAware) {
+            ((JobTypeAware) operatorFactory).setJobType(jobType);
         }
 
         if (LOG.isDebugEnabled()) {
