@@ -42,7 +42,7 @@ import java.util.stream.Stream;
  * This {@link BulkFormat} is a wrapper that attaches file information columns to the output
  * records.
  */
-class FileInfoExtractorBulkFormat implements BulkFormat<RowData, FileSourceSplit> {
+public class FileInfoExtractorBulkFormat implements BulkFormat<RowData, FileSourceSplit> {
 
     private final BulkFormat<RowData, FileSourceSplit> wrapped;
     private final TypeInformation<RowData> producedType;

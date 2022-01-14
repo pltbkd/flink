@@ -23,19 +23,35 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.serialization.BulkWriter;
 import org.apache.flink.api.common.serialization.Encoder;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.connector.sink2.CommittableMessage;
 import org.apache.flink.api.connector.sink2.Committer;
 import org.apache.flink.api.connector.sink2.StatefulSink;
 import org.apache.flink.api.connector.sink2.StatefulSink.WithCompatibleState;
 import org.apache.flink.api.connector.sink2.TwoPhaseCommittingSink;
+import org.apache.flink.api.connector.sink2.WithPreCommitTopology;
 import org.apache.flink.connector.file.sink.committer.FileCommitter;
+import org.apache.flink.connector.file.sink.compactor.CompactCoordinator;
+import org.apache.flink.connector.file.sink.compactor.CompactOperator;
+import org.apache.flink.connector.file.sink.compactor.CompactRequestPacker;
+import org.apache.flink.connector.file.sink.compactor.FileCompactRequest;
+import org.apache.flink.connector.file.sink.compactor.FileCompactRequestPacker;
+import org.apache.flink.connector.file.sink.compactor.FileCompactor;
 import org.apache.flink.connector.file.sink.writer.DefaultFileWriterBucketFactory;
 import org.apache.flink.connector.file.sink.writer.FileWriter;
 import org.apache.flink.connector.file.sink.writer.FileWriterBucketFactory;
 import org.apache.flink.connector.file.sink.writer.FileWriterBucketState;
 import org.apache.flink.connector.file.sink.writer.FileWriterBucketStateSerializer;
+import org.apache.flink.connector.file.src.FileSourceSplit;
+import org.apache.flink.connector.file.src.reader.BulkFormat;
+import org.apache.flink.connector.file.table.FileInfoExtractorBulkFormat;
+import org.apache.flink.connector.file.table.stream.compact.CompactBulkReader;
+import org.apache.flink.connector.file.table.stream.compact.CompactReader.Factory;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketAssigner;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BulkBucketWriter;
@@ -109,7 +125,8 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class FileSink<IN>
         implements StatefulSink<IN, FileWriterBucketState>,
                 TwoPhaseCommittingSink<IN, FileSinkCommittable>,
-                WithCompatibleState {
+                WithCompatibleState,
+                WithPreCommitTopology<IN, FileSinkCommittable> {
 
     private final BucketsBuilder<IN, ? extends BucketsBuilder<IN, ?>> bucketsBuilder;
 
@@ -177,6 +194,45 @@ public class FileSink<IN>
                 basePath, bulkWriterFactory, new DateTimeBucketAssigner<>());
     }
 
+    private FileCompactor<IN> createCompactor() throws IOException {
+        return bucketsBuilder.createCompactor();
+    }
+
+    @Override
+    public DataStream<CommittableMessage<FileSinkCommittable>> addPreCommitTopology(
+            DataStream<CommittableMessage<FileSinkCommittable>> committableStream) {
+        SimpleVersionedSerializer<FileSinkCommittable> serializer = getCommittableSerializer();
+        CompactRequestPacker<FileSinkCommittable, FileCompactRequest> packingStrategy =
+                FileCompactRequestPacker.Builder.newBuilder()
+                        .withSizeThreshold(32 * 1024 * 1024)
+                        .build();
+        CompactCoordinator<FileSinkCommittable, FileCompactRequest> coordinator =
+                new CompactCoordinator<>(packingStrategy, () -> serializer);
+        TypeInformation<FileCompactRequest> requestType =
+                TypeInformation.of(FileCompactRequest.class);
+        SingleOutputStreamOperator<FileCompactRequest> coordinatorOp =
+                committableStream
+                        .transform("compact-coordinator", requestType, coordinator)
+                        .setParallelism(1)
+                        .setMaxParallelism(1);
+
+        FileCompactor<IN> compactor;
+        try {
+            compactor = createCompactor();
+        } catch (Exception e) {
+            throw new IllegalStateException("Cannot create compactor", e);
+        }
+        CompactOperator<FileSinkCommittable, FileCompactRequest> compactorOp =
+                new CompactOperator<>(compactor, 4, requestType);
+        TypeInformation<CommittableMessage<FileSinkCommittable>> committableType =
+                committableStream.getType();
+
+        return coordinatorOp
+                .broadcast()
+                .transform("compact-operator", committableType, compactorOp)
+                .setParallelism(committableStream.getParallelism());
+    }
+
     /** The base abstract class for the {@link RowFormatBuilder} and {@link BulkFormatBuilder}. */
     @Internal
     private abstract static class BucketsBuilder<IN, T extends BucketsBuilder<IN, T>>
@@ -204,6 +260,8 @@ public class FileSink<IN>
         @Internal
         abstract SimpleVersionedSerializer<FileSinkCommittable> getCommittableSerializer()
                 throws IOException;
+
+        abstract FileCompactor<IN> createCompactor() throws IOException;
     }
 
     /** A builder for configuring the sink for row-wise encoding formats. */
@@ -297,6 +355,23 @@ public class FileSink<IN>
         @Override
         FileCommitter createCommitter() throws IOException {
             return new FileCommitter(createBucketWriter());
+        }
+
+        @Override
+        FileCompactor<IN> createCompactor() throws IOException {
+            //TODO reader probably not available
+            final BulkFormat<IN, FileSourceSplit> format =
+                    new FileInfoExtractorBulkFormat(
+                            bulkReaderFormat.createRuntimeDecoder(
+                                    createSourceContext(context), physicalDataType),
+                            producedDataType,
+                            context.createTypeInformation(producedDataType),
+                            Collections.emptyMap(),
+                            partitionKeys,
+                            defaultPartName);
+            Factory<IN> elementReaderFactory = CompactBulkReader.factory(format);
+            BucketWriter<IN, String> bucketWriter = createBucketWriter();
+            return new FileCompactor<>(null, elementReaderFactory, bucketWriter);
         }
 
         @Override
@@ -446,6 +521,23 @@ public class FileSink<IN>
         @Override
         FileCommitter createCommitter() throws IOException {
             return new FileCommitter(createBucketWriter());
+        }
+
+        @Override
+        FileCompactor<IN> createCompactor() throws IOException {
+            //TODO reader probably not available
+            final BulkFormat<IN, FileSourceSplit> format =
+                    new FileInfoExtractorBulkFormat(
+                            bulkReaderFormat.createRuntimeDecoder(
+                                    createSourceContext(context), physicalDataType),
+                            producedDataType,
+                            context.createTypeInformation(producedDataType),
+                            Collections.emptyMap(),
+                            partitionKeys,
+                            defaultPartName);
+            Factory<IN> elementReaderFactory = CompactBulkReader.factory(format);
+            BucketWriter<IN, String> bucketWriter = createBucketWriter();
+            return new FileCompactor<>(null, elementReaderFactory, bucketWriter);
         }
 
         @Override

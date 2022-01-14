@@ -56,7 +56,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * @param <IN> The type of input elements.
  */
 @Internal
-class FileWriterBucket<IN> {
+public class FileWriterBucket<IN> {
 
     private static final Logger LOG = LoggerFactory.getLogger(FileWriterBucket.class);
 

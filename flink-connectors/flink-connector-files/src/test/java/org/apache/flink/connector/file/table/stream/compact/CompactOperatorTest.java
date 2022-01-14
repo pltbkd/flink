@@ -18,6 +18,7 @@
 
 package org.apache.flink.connector.file.table.stream.compact;
 
+import org.apache.flink.connector.file.sink.FileSinkCommittable;
 import org.apache.flink.connector.file.table.stream.PartitionCommitInfo;
 import org.apache.flink.connector.file.table.stream.compact.CompactMessages.CompactionUnit;
 import org.apache.flink.connector.file.table.stream.compact.CompactMessages.CoordinatorOutput;
@@ -29,7 +30,6 @@ import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.flink.util.FileUtils;
 import org.apache.flink.util.function.ThrowingConsumer;
-
 import org.junit.Assert;
 import org.junit.Test;
 

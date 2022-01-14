@@ -176,7 +176,7 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
             this.commitRecoverable = commitRecoverable;
         }
 
-        RecoverableWriter.CommitRecoverable getCommitRecoverable() {
+        public RecoverableWriter.CommitRecoverable getCommitRecoverable() {
             return commitRecoverable;
         }
     }
@@ -195,7 +195,7 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
             this.resumeRecoverable = resumeRecoverable;
         }
 
-        RecoverableWriter.ResumeRecoverable getResumeRecoverable() {
+        public RecoverableWriter.ResumeRecoverable getResumeRecoverable() {
             return resumeRecoverable;
         }
     }

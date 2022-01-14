@@ -19,6 +19,7 @@
 package org.apache.flink.connector.file.table.stream.compact;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.connector.file.sink.FileSinkCommittable;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter;
 import org.apache.flink.util.function.SupplierWithException;

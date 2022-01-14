@@ -30,11 +30,12 @@ import java.io.IOException;
  * implements the {@link PartFileInfo}.
  */
 @Internal
-final class RowWisePartWriter<IN, BucketID> extends OutputStreamBasedPartFileWriter<IN, BucketID> {
+public final class RowWisePartWriter<IN, BucketID>
+        extends OutputStreamBasedPartFileWriter<IN, BucketID> {
 
     private final Encoder<IN> encoder;
 
-    RowWisePartWriter(
+    public RowWisePartWriter(
             final BucketID bucketId,
             final RecoverableFsDataOutputStream currentPartStream,
             final Encoder<IN> encoder,

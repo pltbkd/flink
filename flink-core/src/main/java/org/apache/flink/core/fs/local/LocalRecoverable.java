@@ -29,7 +29,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /** An implementation of the resume and commit descriptor objects for local recoverable streams. */
 @Internal
-class LocalRecoverable implements CommitRecoverable, ResumeRecoverable {
+public class LocalRecoverable implements CommitRecoverable, ResumeRecoverable {
 
     /** The file path for the final result file. */
     private final File targetFile;

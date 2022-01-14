@@ -22,7 +22,6 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter;
 
 import javax.annotation.Nullable;
-
 import java.io.Serializable;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -54,6 +53,11 @@ public class FileSinkCommittable implements Serializable {
             @Nullable InProgressFileWriter.InProgressFileRecoverable inProgressFileToCleanup) {
         this.pendingFile = pendingFile;
         this.inProgressFileToCleanup = inProgressFileToCleanup;
+    }
+
+    //TODO required for compacted, to be implemented
+    public String getBucketId() {
+        return null;
     }
 
     public boolean hasPendingFile() {

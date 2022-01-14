@@ -16,25 +16,12 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.file.table.stream.compact;
+package org.apache.flink.connector.file.sink.compactor;
 
-import org.apache.flink.annotation.Internal;
-import org.apache.flink.connector.file.sink.FileSinkCommittable;
-
-import java.io.IOException;
-import java.io.Serializable;
-
-/** Writer for compaction. */
-@Internal
-public interface CompactWriter<T> {
-
-    void write(T record) throws IOException;
-
-    /** Commits the pending file, making it visible. */
-    void commit() throws IOException;
-
-    /** Factory to create {@link CompactWriter}. */
-    interface Factory<T> extends Serializable {
-        CompactWriter<T> create(CompactContext context) throws IOException;
-    }
+public interface Compactor<CommT, CompT> {
+    /**
+     * Compacts all committable in this request, returns an iterable of CommT since the result may
+     * contain different influences, i.e. add, delete, etc..
+     */
+    Iterable<CommT> compact(CompT request) throws Exception;
 }
