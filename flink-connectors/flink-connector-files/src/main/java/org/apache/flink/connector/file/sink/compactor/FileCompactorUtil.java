@@ -1,9 +1,9 @@
 package org.apache.flink.connector.file.sink.compactor;
 
+import org.apache.flink.core.fs.CommittableTraits.InProgressPathAware;
+import org.apache.flink.core.fs.CommittableTraits.SizeAware;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableWriter;
-import org.apache.flink.core.fs.local.LocalRecoverable;
-import org.apache.flink.runtime.fs.hdfs.HadoopFsRecoverable;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter.PendingFileRecoverable;
 import org.apache.flink.streaming.api.functions.sink.filesystem.OutputStreamBasedPartFileWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.OutputStreamBasedPartFileWriter.OutputStreamBasedPendingFileRecoverable;
@@ -11,10 +11,9 @@ import org.apache.flink.streaming.api.functions.sink.filesystem.OutputStreamBase
 public class FileCompactorUtil {
 
     public static Path getPath(PendingFileRecoverable pendingFileRecoverable) {
-        // TODO not supported for bad dependency
-        // if(pendingFileRecoverable instanceof HadoopPathBasedPendingFileRecoverable){
-        //     return pendingFileRecoverable.getTempFilePath();
-        // }
+        if (pendingFileRecoverable instanceof InProgressPathAware) {
+            return ((InProgressPathAware) pendingFileRecoverable).getInProgressPath();
+        }
 
         // OutputStreamBasedInProgressFileRecoverable is covered in this case
         if (pendingFileRecoverable
@@ -24,24 +23,18 @@ public class FileCompactorUtil {
                     ((OutputStreamBasedPendingFileRecoverable) pendingFileRecoverable)
                             .getCommitRecoverable();
 
-            if (commitRecoverable instanceof LocalRecoverable) {
-                return new Path(((LocalRecoverable) commitRecoverable).tempFile().getPath());
-            } else if (commitRecoverable instanceof HadoopFsRecoverable) {
-                // TODO Compile error? : Cannot access org.apache.hadoop.fs.Path
-                return new Path(((HadoopFsRecoverable) commitRecoverable).tempFile().toUri());
+            if (commitRecoverable instanceof InProgressPathAware) {
+                return ((InProgressPathAware) commitRecoverable).getInProgressPath();
             }
-            // TODO not supported for bad dependency
-            // else if (commitRecoverable instanceof S3Recoverable) {}
         }
 
         throw new UnsupportedOperationException();
     }
 
     public static long getSize(PendingFileRecoverable pendingFileRecoverable) {
-        // TODO not supported for bad dependency
-        // if(pendingFileRecoverable instanceof HadoopPathBasedPendingFileRecoverable){
-        //     return pendingFileRecoverable.getTempFilePath();
-        // }
+        if (pendingFileRecoverable instanceof SizeAware) {
+            return ((SizeAware) pendingFileRecoverable).getSize();
+        }
 
         // OutputStreamBasedInProgressFileRecoverable is covered in this case
         if (pendingFileRecoverable
@@ -51,14 +44,9 @@ public class FileCompactorUtil {
                     ((OutputStreamBasedPendingFileRecoverable) pendingFileRecoverable)
                             .getCommitRecoverable();
 
-            if (commitRecoverable instanceof LocalRecoverable) {
-                return ((LocalRecoverable) commitRecoverable).offset();
-            } else if (commitRecoverable instanceof HadoopFsRecoverable) {
-                // TODO Compile error? : Cannot access org.apache.hadoop.fs.Path
-                return ((HadoopFsRecoverable) commitRecoverable).offset();
+            if (commitRecoverable instanceof SizeAware) {
+                return ((SizeAware) commitRecoverable).getSize();
             }
-            // TODO not supported for bad dependency
-            // else if (commitRecoverable instanceof S3Recoverable) {}
         }
 
         throw new UnsupportedOperationException();

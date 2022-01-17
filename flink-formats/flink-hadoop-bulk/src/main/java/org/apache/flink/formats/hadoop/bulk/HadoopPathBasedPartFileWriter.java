@@ -19,12 +19,12 @@
 package org.apache.flink.formats.hadoop.bulk;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.core.fs.CommittableTraits.InProgressPathAware;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.AbstractPartFileWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.WriterProperties;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 
@@ -107,7 +107,8 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
     }
 
     @VisibleForTesting
-    static class HadoopPathBasedPendingFileRecoverable implements PendingFileRecoverable {
+    static class HadoopPathBasedPendingFileRecoverable
+            implements PendingFileRecoverable, InProgressPathAware {
         private final Path targetFilePath;
 
         private final Path tempFilePath;
@@ -123,6 +124,11 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
 
         public Path getTempFilePath() {
             return tempFilePath;
+        }
+
+        @Override
+        public org.apache.flink.core.fs.Path getInProgressPath() {
+            return new org.apache.flink.core.fs.Path(tempFilePath.toUri());
         }
     }
 

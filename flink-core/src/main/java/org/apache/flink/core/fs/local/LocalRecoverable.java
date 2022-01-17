@@ -19,6 +19,9 @@
 package org.apache.flink.core.fs.local;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.core.fs.CommittableTraits.InProgressPathAware;
+import org.apache.flink.core.fs.CommittableTraits.SizeAware;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableWriter.CommitRecoverable;
 import org.apache.flink.core.fs.RecoverableWriter.ResumeRecoverable;
 
@@ -29,7 +32,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /** An implementation of the resume and commit descriptor objects for local recoverable streams. */
 @Internal
-public class LocalRecoverable implements CommitRecoverable, ResumeRecoverable {
+public class LocalRecoverable
+        implements CommitRecoverable, ResumeRecoverable, InProgressPathAware, SizeAware {
 
     /** The file path for the final result file. */
     private final File targetFile;
@@ -68,5 +72,15 @@ public class LocalRecoverable implements CommitRecoverable, ResumeRecoverable {
     @Override
     public String toString() {
         return "LocalRecoverable " + tempFile + " @ " + offset + " -> " + targetFile;
+    }
+
+    @Override
+    public Path getInProgressPath() {
+        return Path.fromLocalFile(tempFile);
+    }
+
+    @Override
+    public long getSize() {
+        return offset;
     }
 }
