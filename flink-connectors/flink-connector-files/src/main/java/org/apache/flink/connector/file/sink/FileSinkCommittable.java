@@ -33,31 +33,38 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 @Internal
 public class FileSinkCommittable implements Serializable {
 
+    private final String bucketId;
+
     @Nullable private final InProgressFileWriter.PendingFileRecoverable pendingFile;
 
     @Nullable private final InProgressFileWriter.InProgressFileRecoverable inProgressFileToCleanup;
 
-    public FileSinkCommittable(InProgressFileWriter.PendingFileRecoverable pendingFile) {
+    public FileSinkCommittable(
+            String bucketId, InProgressFileWriter.PendingFileRecoverable pendingFile) {
+        this.bucketId = bucketId;
         this.pendingFile = checkNotNull(pendingFile);
         this.inProgressFileToCleanup = null;
     }
 
     public FileSinkCommittable(
+            String bucketId,
             InProgressFileWriter.InProgressFileRecoverable inProgressFileToCleanup) {
+        this.bucketId = bucketId;
         this.pendingFile = null;
         this.inProgressFileToCleanup = checkNotNull(inProgressFileToCleanup);
     }
 
     FileSinkCommittable(
+            String bucketId,
             @Nullable InProgressFileWriter.PendingFileRecoverable pendingFile,
             @Nullable InProgressFileWriter.InProgressFileRecoverable inProgressFileToCleanup) {
+        this.bucketId = bucketId;
         this.pendingFile = pendingFile;
         this.inProgressFileToCleanup = inProgressFileToCleanup;
     }
 
-    //TODO required for compacted, to be implemented
     public String getBucketId() {
-        return null;
+        return bucketId;
     }
 
     public boolean hasPendingFile() {

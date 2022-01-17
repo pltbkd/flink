@@ -76,7 +76,7 @@ public class LocalRecoverable
 
     @Override
     public Path getInProgressPath() {
-        return Path.fromLocalFile(tempFile);
+        return new Path(tempFile.getPath());
     }
 
     @Override

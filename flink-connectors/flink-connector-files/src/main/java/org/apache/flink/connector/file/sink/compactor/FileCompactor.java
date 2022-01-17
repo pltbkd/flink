@@ -6,6 +6,7 @@ import org.apache.flink.connector.file.sink.FileSinkCommittable;
 import org.apache.flink.connector.file.table.stream.compact.CompactReader;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter.PendingFileRecoverable;
+import org.apache.flink.util.function.SerializableSupplierWithException;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -19,11 +20,13 @@ public class FileCompactor<InputT> implements Compactor<FileSinkCommittable, Fil
 
     public FileCompactor(
             Configuration config,
-            CompactReader.Factory<InputT> elementReaderFactory,
-            BucketWriter<InputT, String> bucketWriter) {
+            SerializableSupplierWithException<CompactReader.Factory<InputT>, IOException>
+                    elementReaderFactorySupplier,
+            SerializableSupplierWithException<BucketWriter<InputT, String>, IOException>
+                    bucketWriterSupplier) {
         this(
-                new FileSinkCommittableReader.Factory<>(config, elementReaderFactory),
-                new FileSinkCommittableCompactWriter.Factory<>(bucketWriter));
+                new FileSinkCommittableReader.Factory<>(config, elementReaderFactorySupplier),
+                new FileSinkCommittableCompactWriter.Factory<>(bucketWriterSupplier));
     }
 
     public FileCompactor(
@@ -41,7 +44,9 @@ public class FileCompactor<InputT> implements Compactor<FileSinkCommittable, Fil
 
         for (FileSinkCommittable committable : request.getCommittable()) {
             if (committable.hasInProgressFileToCleanup()) {
-                results.add(new FileSinkCommittable(committable.getInProgressFileToCleanup()));
+                results.add(
+                        new FileSinkCommittable(
+                                request.getBucketId(), committable.getInProgressFileToCleanup()));
             }
 
             if (committable.hasPendingFile()) {
@@ -54,11 +59,14 @@ public class FileCompactor<InputT> implements Compactor<FileSinkCommittable, Fil
                 }
 
                 // TODO add a cleanup request for the compacted pending file
-                // results.add(new FileSinkCommittable(committable.getPendingFile()));
+                // results.add(
+                //         new FileSinkCommittable(
+                //                 request.getBucketId(), committable.getPendingFile()));
             }
         }
 
-        FileSinkCommittable compacted = new FileSinkCommittable(writer.closeForCommit());
+        FileSinkCommittable compacted =
+                new FileSinkCommittable(request.getBucketId(), writer.closeForCommit());
         results.add(0, compacted);
         return results;
     }

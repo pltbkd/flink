@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,14 +16,19 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.file.sink.compactor;
+package org.apache.flink.util.function;
+
+import org.apache.flink.annotation.PublicEvolving;
 
 import java.io.Serializable;
 
-public interface Compactor<CommT, CompT> extends Serializable {
-    /**
-     * Compacts all committable in this request, returns an iterable of CommT since the result may
-     * contain different influences, i.e. add, delete, etc..
-     */
-    Iterable<CommT> compact(CompT request) throws Exception;
-}
+/**
+ * A serializable {@link SupplierWithException}.
+ *
+ * @param <T> the type of results supplied by this supplier
+ * @param <E> The type of Exceptions thrown by this function.
+ */
+@PublicEvolving
+@FunctionalInterface
+public interface SerializableSupplierWithException<T, E extends Exception>
+        extends SupplierWithException<T, E>, Serializable {}

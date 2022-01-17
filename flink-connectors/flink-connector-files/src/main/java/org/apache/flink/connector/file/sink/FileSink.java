@@ -36,7 +36,6 @@ import org.apache.flink.connector.file.sink.compactor.CompactCoordinator;
 import org.apache.flink.connector.file.sink.compactor.CompactOperator;
 import org.apache.flink.connector.file.sink.compactor.CompactRequestPacker;
 import org.apache.flink.connector.file.sink.compactor.CompactStrategy;
-import org.apache.flink.connector.file.sink.compactor.Compactor;
 import org.apache.flink.connector.file.sink.compactor.FileCompactRequest;
 import org.apache.flink.connector.file.sink.compactor.FileCompactRequestPacker;
 import org.apache.flink.connector.file.sink.compactor.FileCompactor;
@@ -48,7 +47,6 @@ import org.apache.flink.connector.file.sink.writer.FileWriterBucketStateSerializ
 import org.apache.flink.connector.file.src.FileSourceSplit;
 import org.apache.flink.connector.file.src.reader.BulkFormat;
 import org.apache.flink.connector.file.table.stream.compact.CompactBulkReader;
-import org.apache.flink.connector.file.table.stream.compact.CompactReader.Factory;
 import org.apache.flink.connector.file.table.stream.compact.FileInputFormatCompactReader;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
@@ -66,6 +64,7 @@ import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.
 import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.DefaultRollingPolicy;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.OnCheckpointRollingPolicy;
 import org.apache.flink.util.FlinkRuntimeException;
+import org.apache.flink.util.function.SerializableSupplierWithException;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -197,7 +196,7 @@ public class FileSink<IN>
                 basePath, bulkWriterFactory, new DateTimeBucketAssigner<>());
     }
 
-    private FileCompactor<IN> createCompactor() throws IOException {
+    public FileCompactor<IN> createCompactor() throws IOException {
         return bucketsBuilder.createCompactor();
     }
 
@@ -210,7 +209,6 @@ public class FileSink<IN>
             return committableStream;
         }
 
-        SimpleVersionedSerializer<FileSinkCommittable> serializer = getCommittableSerializer();
         CompactRequestPacker<FileSinkCommittable, FileCompactRequest> packingStrategy =
                 FileCompactRequestPacker.Builder.newBuilder()
                         .withSizeThreshold(strategy.getSizeThreshold())
@@ -218,11 +216,12 @@ public class FileSink<IN>
                         .allowCrossCheckpoint(strategy.isAllowCrossCheckpoint())
                         .build();
         CompactCoordinator<FileSinkCommittable, FileCompactRequest> coordinator =
-                new CompactCoordinator<>(packingStrategy, () -> serializer);
+                new CompactCoordinator<>(packingStrategy, this::getCommittableSerializer);
         TypeInformation<FileCompactRequest> requestType =
                 TypeInformation.of(FileCompactRequest.class);
         SingleOutputStreamOperator<FileCompactRequest> coordinatorOp =
                 committableStream
+                        .rescale()
                         .transform("compact-coordinator", requestType, coordinator)
                         .setParallelism(1)
                         .setMaxParallelism(1);
@@ -238,8 +237,9 @@ public class FileSink<IN>
         TypeInformation<CommittableMessage<FileSinkCommittable>> committableType =
                 committableStream.getType();
 
+        // TODO how to shuffle here? or broadcast and filter in Compactor?
         return coordinatorOp
-                .broadcast()
+                .shuffle()
                 .transform("compact-operator", committableType, compactorOp)
                 .setParallelism(committableStream.getParallelism());
     }
@@ -301,7 +301,8 @@ public class FileSink<IN>
 
         private CompactStrategy compactStrategy;
 
-        private FileInputFormat<IN> inputFormat;
+        private SerializableSupplierWithException<FileInputFormat<IN>, IOException>
+                inputFormatFactory;
 
         protected RowFormatBuilder(
                 Path basePath, Encoder<IN> encoder, BucketAssigner<IN, String> bucketAssigner) {
@@ -353,9 +354,11 @@ public class FileSink<IN>
         }
 
         public T enableGeneralCompacting(
-                final CompactStrategy strategy, FileInputFormat<IN> inputFormat) {
+                final CompactStrategy strategy,
+                SerializableSupplierWithException<FileInputFormat<IN>, IOException>
+                        inputFormatFactory) {
             this.compactStrategy = strategy;
-            this.inputFormat = inputFormat;
+            this.inputFormatFactory = inputFormatFactory;
             return self();
         }
 
@@ -393,9 +396,10 @@ public class FileSink<IN>
             if (compactStrategy == null) {
                 return null;
             }
-            Factory<IN> elementReaderFactory = FileInputFormatCompactReader.factory(inputFormat);
-            BucketWriter<IN, String> bucketWriter = createBucketWriter();
-            return new FileCompactor<>(null, elementReaderFactory, bucketWriter);
+            return new FileCompactor<>(
+                    null,
+                    () -> FileInputFormatCompactReader.factory(inputFormatFactory.get()),
+                    this::createBucketWriter);
         }
 
         @Override
@@ -458,7 +462,8 @@ public class FileSink<IN>
 
         private CompactStrategy compactStrategy;
 
-        private BulkFormat<IN, FileSourceSplit> bulkFormat;
+        private SerializableSupplierWithException<BulkFormat<IN, FileSourceSplit>, IOException>
+                bulkFormatFactory;
 
         protected BulkFormatBuilder(
                 Path basePath,
@@ -528,9 +533,11 @@ public class FileSink<IN>
         }
 
         public T enableGeneralCompacting(
-                final CompactStrategy strategy, BulkFormat<IN, FileSourceSplit> bulkFormat) {
+                final CompactStrategy strategy,
+                SerializableSupplierWithException<BulkFormat<IN, FileSourceSplit>, IOException>
+                        bulkFormatFactory) {
             this.compactStrategy = strategy;
-            this.bulkFormat = bulkFormat;
+            this.bulkFormatFactory = bulkFormatFactory;
             return self();
         }
 
@@ -568,9 +575,10 @@ public class FileSink<IN>
             if (compactStrategy == null) {
                 return null;
             }
-            Factory<IN> elementReaderFactory = CompactBulkReader.factory(bulkFormat);
-            BucketWriter<IN, String> bucketWriter = createBucketWriter();
-            return new FileCompactor<>(null, elementReaderFactory, bucketWriter);
+            return new FileCompactor<>(
+                    null,
+                    () -> CompactBulkReader.factory(bulkFormatFactory.get()),
+                    this::createBucketWriter);
         }
 
         @Override

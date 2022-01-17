@@ -61,10 +61,11 @@ public class CompactOperator<CommT, CompT> extends AbstractStreamOperator<Commit
 
     private static final long SUBMITTED_ID = -1L;
 
+    private final Compactor<CommT, CompT> compactor;
+    private final int compactThreads;
     private final TypeInformation<CompT> compactRequestTypeInfo;
 
-    private final Compactor<CommT, CompT> compactor;
-    private final ExecutorService compactService;
+    private transient ExecutorService compactService;
 
     // TODO not support unaligned checkpoint at present
     private final TreeMap<Long, List<CompT>> receivedRequests = new TreeMap<>();
@@ -79,8 +80,13 @@ public class CompactOperator<CommT, CompT> extends AbstractStreamOperator<Commit
             int compactThreads,
             TypeInformation<CompT> compactRequestTypeInfo) {
         this.compactor = compactor;
+        this.compactThreads = compactThreads;
         this.compactRequestTypeInfo = compactRequestTypeInfo;
+    }
 
+    @Override
+    public void open() throws Exception {
+        super.open();
         this.compactService =
                 Executors.newFixedThreadPool(
                         Math.max(1, Math.min(compactThreads, Hardware.getNumberCPUCores())),
@@ -98,11 +104,11 @@ public class CompactOperator<CommT, CompT> extends AbstractStreamOperator<Commit
     public void endInput() throws Exception {
         submitUntil(Long.MAX_VALUE);
         assert receivedRequests.isEmpty();
+
         CompletableFuture.allOf(
-                        (CompletableFuture<?>)
-                                compactingRequests.stream()
-                                        .map(r -> r.f1)
-                                        .collect(Collectors.toList()))
+                        compactingRequests.stream()
+                                .map(r -> r.f1)
+                                .toArray(CompletableFuture[]::new))
                 .join();
         emitCompacted(null);
         assert compactingRequests.isEmpty();
@@ -160,13 +166,7 @@ public class CompactOperator<CommT, CompT> extends AbstractStreamOperator<Commit
             }
         }
 
-        // A summary must be sent after all results during this checkpoint
-        for (CommT c : compacted) {
-            CommittableWithLineage<CommT> comm =
-                    new CommittableWithLineage<>(
-                            c, checkpointId, getRuntimeContext().getIndexOfThisSubtask());
-            output.collect(new StreamRecord<>(comm));
-        }
+        // A summary must be sent before all results during this checkpoint
         CommittableSummary<CommT> summary =
                 new CommittableSummary<>(
                         getRuntimeContext().getIndexOfThisSubtask(),
@@ -175,6 +175,12 @@ public class CompactOperator<CommT, CompT> extends AbstractStreamOperator<Commit
                         compacted.size(),
                         compacted.size());
         output.collect(new StreamRecord<>(summary));
+        for (CommT c : compacted) {
+            CommittableWithLineage<CommT> comm =
+                    new CommittableWithLineage<>(
+                            c, checkpointId, getRuntimeContext().getIndexOfThisSubtask());
+            output.collect(new StreamRecord<>(comm));
+        }
     }
 
     @Override

@@ -6,6 +6,7 @@ import org.apache.flink.connector.file.table.stream.compact.CompactContext;
 import org.apache.flink.connector.file.table.stream.compact.CompactReader;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter.PendingFileRecoverable;
+import org.apache.flink.util.function.SerializableSupplierWithException;
 
 import java.io.IOException;
 
@@ -28,17 +29,23 @@ public class FileSinkCommittableReader<InputT> implements FileCompactReader<Inpu
 
     public static class Factory<InputT> implements FileCompactReader.Factory<InputT> {
         private final Configuration config;
-        private final CompactReader.Factory<InputT> elementReaderFactory;
+        private final SerializableSupplierWithException<CompactReader.Factory<InputT>, IOException>
+                elementReaderFactorySupplier;
 
-        public Factory(Configuration config, CompactReader.Factory<InputT> elementReaderFactory) {
+        public Factory(
+                Configuration config,
+                SerializableSupplierWithException<CompactReader.Factory<InputT>, IOException>
+                        elementReaderFactorySupplier) {
             this.config = config;
-            this.elementReaderFactory = elementReaderFactory;
+            this.elementReaderFactorySupplier = elementReaderFactorySupplier;
         }
 
         @Override
         public FileCompactReader<InputT> create(
                 FileCompactRequest request, PendingFileRecoverable pendingFileRecoverable)
                 throws IOException {
+            // do not cache this factory, inputFormat is reused
+            CompactReader.Factory<InputT> elementReaderFactory = elementReaderFactorySupplier.get();
             Path path = FileCompactorUtil.getPath(pendingFileRecoverable);
             CompactReader<InputT> elementReader =
                     elementReaderFactory.create(

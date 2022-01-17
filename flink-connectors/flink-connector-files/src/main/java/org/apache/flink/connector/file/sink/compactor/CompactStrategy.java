@@ -1,6 +1,8 @@
 package org.apache.flink.connector.file.sink.compactor;
 
-public class CompactStrategy {
+import java.io.Serializable;
+
+public class CompactStrategy implements Serializable {
 
     private final long sizeThreshold;
     // TODO not implemented

@@ -6,6 +6,7 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter.PendingFileRecoverable;
+import org.apache.flink.util.function.SerializableSupplierWithException;
 
 import java.io.IOException;
 
@@ -29,14 +30,27 @@ public class FileSinkCommittableCompactWriter<InputT> implements FileCompactWrit
     public static class Factory<InputT> implements FileCompactWriter.Factory<InputT> {
         public static final String COMPACTED_PREFIX = "compacted-";
 
-        private final BucketWriter<InputT, String> bucketWriter;
+        private final SerializableSupplierWithException<BucketWriter<InputT, String>, IOException>
+                bucketWriterSupplier;
 
-        public Factory(BucketWriter<InputT, String> bucketWriter) {
-            this.bucketWriter = bucketWriter;
+        private transient BucketWriter<InputT, String> bucketWriter;
+
+        public Factory(
+                SerializableSupplierWithException<BucketWriter<InputT, String>, IOException>
+                        bucketWriterSupplier) {
+            this.bucketWriterSupplier = bucketWriterSupplier;
         }
 
         @Override
         public FileCompactWriter<InputT> create(FileCompactRequest request) throws IOException {
+            if (bucketWriter == null) {
+                synchronized (bucketWriterSupplier) {
+                    if (bucketWriter == null) {
+                        bucketWriter = bucketWriterSupplier.get();
+                    }
+                }
+            }
+
             // TODO verify
             assert request.getCommittable() != null;
             for (FileSinkCommittable committable : request.getCommittable()) {

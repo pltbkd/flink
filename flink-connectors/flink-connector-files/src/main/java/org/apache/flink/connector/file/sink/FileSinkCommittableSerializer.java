@@ -81,7 +81,7 @@ public class FileSinkCommittableSerializer
 
     private void serializeV1(FileSinkCommittable committable, DataOutputView dataOutputView)
             throws IOException {
-
+        dataOutputView.writeUTF(committable.getBucketId());
         if (committable.hasPendingFile()) {
             dataOutputView.writeBoolean(true);
             SimpleVersionedSerialization.writeVersionAndSerialize(
@@ -102,6 +102,7 @@ public class FileSinkCommittableSerializer
     }
 
     private FileSinkCommittable deserializeV1(DataInputView dataInputView) throws IOException {
+        String bucketId = dataInputView.readUTF();
         InProgressFileWriter.PendingFileRecoverable pendingFile = null;
         if (dataInputView.readBoolean()) {
             pendingFile =
@@ -116,7 +117,7 @@ public class FileSinkCommittableSerializer
                             inProgressFileSerializer, dataInputView);
         }
 
-        return new FileSinkCommittable(pendingFile, inProgressFileToCleanup);
+        return new FileSinkCommittable(bucketId, pendingFile, inProgressFileToCleanup);
     }
 
     private static void validateMagicNumber(DataInputView in) throws IOException {
