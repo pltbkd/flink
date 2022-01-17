@@ -21,6 +21,7 @@ package org.apache.flink.connector.file.sink;
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.api.common.io.FileInputFormat;
 import org.apache.flink.api.common.serialization.BulkWriter;
 import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -34,6 +35,8 @@ import org.apache.flink.connector.file.sink.committer.FileCommitter;
 import org.apache.flink.connector.file.sink.compactor.CompactCoordinator;
 import org.apache.flink.connector.file.sink.compactor.CompactOperator;
 import org.apache.flink.connector.file.sink.compactor.CompactRequestPacker;
+import org.apache.flink.connector.file.sink.compactor.CompactStrategy;
+import org.apache.flink.connector.file.sink.compactor.Compactor;
 import org.apache.flink.connector.file.sink.compactor.FileCompactRequest;
 import org.apache.flink.connector.file.sink.compactor.FileCompactRequestPacker;
 import org.apache.flink.connector.file.sink.compactor.FileCompactor;
@@ -44,9 +47,9 @@ import org.apache.flink.connector.file.sink.writer.FileWriterBucketState;
 import org.apache.flink.connector.file.sink.writer.FileWriterBucketStateSerializer;
 import org.apache.flink.connector.file.src.FileSourceSplit;
 import org.apache.flink.connector.file.src.reader.BulkFormat;
-import org.apache.flink.connector.file.table.FileInfoExtractorBulkFormat;
 import org.apache.flink.connector.file.table.stream.compact.CompactBulkReader;
 import org.apache.flink.connector.file.table.stream.compact.CompactReader.Factory;
+import org.apache.flink.connector.file.table.stream.compact.FileInputFormatCompactReader;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
@@ -201,10 +204,18 @@ public class FileSink<IN>
     @Override
     public DataStream<CommittableMessage<FileSinkCommittable>> addPreCommitTopology(
             DataStream<CommittableMessage<FileSinkCommittable>> committableStream) {
+        CompactStrategy strategy = bucketsBuilder.getCompactStrategy();
+        if (strategy == null) {
+            // not enabled
+            return committableStream;
+        }
+
         SimpleVersionedSerializer<FileSinkCommittable> serializer = getCommittableSerializer();
         CompactRequestPacker<FileSinkCommittable, FileCompactRequest> packingStrategy =
                 FileCompactRequestPacker.Builder.newBuilder()
-                        .withSizeThreshold(32 * 1024 * 1024)
+                        .withSizeThreshold(strategy.getSizeThreshold())
+                        .withMaxIntervalMs(strategy.getMaxIntervalMs())
+                        .allowCrossCheckpoint(strategy.isAllowCrossCheckpoint())
                         .build();
         CompactCoordinator<FileSinkCommittable, FileCompactRequest> coordinator =
                 new CompactCoordinator<>(packingStrategy, () -> serializer);
@@ -261,6 +272,10 @@ public class FileSink<IN>
         abstract SimpleVersionedSerializer<FileSinkCommittable> getCommittableSerializer()
                 throws IOException;
 
+        @Internal
+        abstract CompactStrategy getCompactStrategy();
+
+        @Internal
         abstract FileCompactor<IN> createCompactor() throws IOException;
     }
 
@@ -283,6 +298,10 @@ public class FileSink<IN>
         private RollingPolicy<IN, String> rollingPolicy;
 
         private OutputFileConfig outputFileConfig;
+
+        private CompactStrategy compactStrategy;
+
+        private FileInputFormat<IN> inputFormat;
 
         protected RowFormatBuilder(
                 Path basePath, Encoder<IN> encoder, BucketAssigner<IN, String> bucketAssigner) {
@@ -333,6 +352,13 @@ public class FileSink<IN>
             return self();
         }
 
+        public T enableGeneralCompacting(
+                final CompactStrategy strategy, FileInputFormat<IN> inputFormat) {
+            this.compactStrategy = strategy;
+            this.inputFormat = inputFormat;
+            return self();
+        }
+
         /** Creates the actual sink. */
         public FileSink<IN> build() {
             return new FileSink<>(this);
@@ -358,18 +384,16 @@ public class FileSink<IN>
         }
 
         @Override
+        CompactStrategy getCompactStrategy() {
+            return compactStrategy;
+        }
+
+        @Override
         FileCompactor<IN> createCompactor() throws IOException {
-            //TODO reader probably not available
-            final BulkFormat<IN, FileSourceSplit> format =
-                    new FileInfoExtractorBulkFormat(
-                            bulkReaderFormat.createRuntimeDecoder(
-                                    createSourceContext(context), physicalDataType),
-                            producedDataType,
-                            context.createTypeInformation(producedDataType),
-                            Collections.emptyMap(),
-                            partitionKeys,
-                            defaultPartName);
-            Factory<IN> elementReaderFactory = CompactBulkReader.factory(format);
+            if (compactStrategy == null) {
+                return null;
+            }
+            Factory<IN> elementReaderFactory = FileInputFormatCompactReader.factory(inputFormat);
             BucketWriter<IN, String> bucketWriter = createBucketWriter();
             return new FileCompactor<>(null, elementReaderFactory, bucketWriter);
         }
@@ -431,6 +455,10 @@ public class FileSink<IN>
         private CheckpointRollingPolicy<IN, String> rollingPolicy;
 
         private OutputFileConfig outputFileConfig;
+
+        private CompactStrategy compactStrategy;
+
+        private BulkFormat<IN, FileSourceSplit> bulkFormat;
 
         protected BulkFormatBuilder(
                 Path basePath,
@@ -499,6 +527,13 @@ public class FileSink<IN>
                     outputFileConfig);
         }
 
+        public T enableGeneralCompacting(
+                final CompactStrategy strategy, BulkFormat<IN, FileSourceSplit> bulkFormat) {
+            this.compactStrategy = strategy;
+            this.bulkFormat = bulkFormat;
+            return self();
+        }
+
         /** Creates the actual sink. */
         public FileSink<IN> build() {
             return new FileSink<>(this);
@@ -524,18 +559,16 @@ public class FileSink<IN>
         }
 
         @Override
+        CompactStrategy getCompactStrategy() {
+            return compactStrategy;
+        }
+
+        @Override
         FileCompactor<IN> createCompactor() throws IOException {
-            //TODO reader probably not available
-            final BulkFormat<IN, FileSourceSplit> format =
-                    new FileInfoExtractorBulkFormat(
-                            bulkReaderFormat.createRuntimeDecoder(
-                                    createSourceContext(context), physicalDataType),
-                            producedDataType,
-                            context.createTypeInformation(producedDataType),
-                            Collections.emptyMap(),
-                            partitionKeys,
-                            defaultPartName);
-            Factory<IN> elementReaderFactory = CompactBulkReader.factory(format);
+            if (compactStrategy == null) {
+                return null;
+            }
+            Factory<IN> elementReaderFactory = CompactBulkReader.factory(bulkFormat);
             BucketWriter<IN, String> bucketWriter = createBucketWriter();
             return new FileCompactor<>(null, elementReaderFactory, bucketWriter);
         }
