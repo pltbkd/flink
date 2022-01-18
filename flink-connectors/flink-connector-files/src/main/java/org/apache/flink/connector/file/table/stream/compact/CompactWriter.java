@@ -19,7 +19,6 @@
 package org.apache.flink.connector.file.table.stream.compact;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.connector.file.sink.FileSinkCommittable;
 
 import java.io.IOException;
 import java.io.Serializable;

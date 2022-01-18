@@ -1,7 +1,7 @@
 package org.apache.flink.connector.file.sink.compactor;
 
 import org.apache.flink.connector.file.sink.FileSinkCommittable;
-import org.apache.flink.connector.file.sink.compactor.FileCompactor.FileCompactWriter;
+import org.apache.flink.connector.file.sink.compactor.ReadingElementsCompactor.FileCompactWriter;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter;

@@ -1,7 +1,7 @@
 package org.apache.flink.connector.file.sink.compactor;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.connector.file.sink.compactor.FileCompactor.FileCompactReader;
+import org.apache.flink.connector.file.sink.compactor.ReadingElementsCompactor.FileCompactReader;
 import org.apache.flink.connector.file.table.stream.compact.CompactContext;
 import org.apache.flink.connector.file.table.stream.compact.CompactReader;
 import org.apache.flink.core.fs.Path;
