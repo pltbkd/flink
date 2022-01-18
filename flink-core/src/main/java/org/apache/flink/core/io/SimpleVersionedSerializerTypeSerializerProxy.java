@@ -20,18 +20,13 @@ package org.apache.flink.core.io;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
 import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.util.InstantiationUtil;
 import org.apache.flink.util.function.SerializableSupplier;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -45,7 +40,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 @Internal
 public class SimpleVersionedSerializerTypeSerializerProxy<T> extends TypeSerializer<T> {
 
-    private SerializableSupplier<SimpleVersionedSerializer<T>> serializerSupplier;
+    private final SerializableSupplier<SimpleVersionedSerializer<T>> serializerSupplier;
     private transient SimpleVersionedSerializer<T> cachedSerializer;
 
     public SimpleVersionedSerializerTypeSerializerProxy(
@@ -136,10 +131,8 @@ public class SimpleVersionedSerializerTypeSerializerProxy<T> extends TypeSeriali
 
     @Override
     public TypeSerializerSnapshot<T> snapshotConfiguration() {
-        return new SimpleVersionedSerializerTypeSerializerProxySnapshot<>(this);
-        //        throw new UnsupportedOperationException(
-        //                "SimpleVersionedSerializerWrapper is not meant to be used as a general
-        // TypeSerializer for state.");
+        throw new UnsupportedOperationException(
+                "SimpleVersionedSerializerWrapper is not meant to be used as a general TypeSerializer for state.");
     }
 
     private SimpleVersionedSerializer<T> getSerializer() {
@@ -148,60 +141,5 @@ public class SimpleVersionedSerializerTypeSerializerProxy<T> extends TypeSeriali
         }
         cachedSerializer = serializerSupplier.get();
         return cachedSerializer;
-    }
-
-    public static class SimpleVersionedSerializerTypeSerializerProxySnapshot<T>
-            implements TypeSerializerSnapshot<T> {
-        private SimpleVersionedSerializerTypeSerializerProxy<T> serializer;
-
-        public SimpleVersionedSerializerTypeSerializerProxySnapshot() {}
-
-        public SimpleVersionedSerializerTypeSerializerProxySnapshot(
-                SimpleVersionedSerializerTypeSerializerProxy<T> serializer) {
-            this.serializer = serializer;
-        }
-
-        @Override
-        public int getCurrentVersion() {
-            return serializer.getSerializer().getVersion();
-        }
-
-        @Override
-        public void writeSnapshot(DataOutputView out) throws IOException {
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            ObjectOutputStream os = new ObjectOutputStream(bos);
-            os.writeObject(serializer.serializerSupplier);
-            byte[] bytes = bos.toByteArray();
-            out.writeInt(bytes.length);
-            out.write(bytes);
-        }
-
-        @Override
-        public void readSnapshot(int readVersion, DataInputView in, ClassLoader userCodeClassLoader)
-                throws IOException {
-            int size = in.readInt();
-            byte[] bytes = new byte[size];
-            in.read(bytes);
-            ObjectInputStream is = new ObjectInputStream(new ByteArrayInputStream(bytes));
-            try {
-                serializer =
-                        new SimpleVersionedSerializerTypeSerializerProxy<>(
-                                (SerializableSupplier<SimpleVersionedSerializer<T>>)
-                                        is.readObject());
-            } catch (ClassNotFoundException e) {
-                throw new IOException(e);
-            }
-        }
-
-        @Override
-        public TypeSerializer<T> restoreSerializer() {
-            return serializer;
-        }
-
-        @Override
-        public TypeSerializerSchemaCompatibility<T> resolveSchemaCompatibility(
-                TypeSerializer<T> newSerializer) {
-            return TypeSerializerSchemaCompatibility.compatibleAsIs();
-        }
     }
 }

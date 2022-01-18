@@ -216,7 +216,7 @@ public class FileSink<IN>
                         .allowCrossCheckpoint(strategy.isAllowCrossCheckpoint())
                         .build();
         CompactCoordinator<FileSinkCommittable, FileCompactRequest> coordinator =
-                new CompactCoordinator<>(packingStrategy, this::getCommittableSerializer);
+                new CompactCoordinator<>(packingStrategy, getCommittableSerializer());
         TypeInformation<FileCompactRequest> requestType =
                 TypeInformation.of(FileCompactRequest.class);
         SingleOutputStreamOperator<FileCompactRequest> coordinatorOp =
