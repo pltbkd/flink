@@ -519,6 +519,18 @@ public class FileSink<IN>
                 final CompactStrategy strategy, FileCompactor.Factory compactorFactory) {
             this.compactStrategy = strategy;
             this.fileCompactorFactory = compactorFactory;
+            if (strategy.isCommitBeforeCompact()) {
+                // we should hide the committed file before compacting
+                outputFileConfig =
+                        OutputFileConfig.builder()
+                                .withPartPrefix("." + outputFileConfig.getPartPrefix())
+                                .withPartSuffix(outputFileConfig.getPartSuffix())
+                                .build();
+                // compacted file is currently build directly by FileSystem, partPrefix does not
+                // affect this
+                // TODO use OutputFileConfig for Compacted?
+                // TODO does this work for S3?
+            }
             return self();
         }
 
