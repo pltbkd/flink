@@ -16,7 +16,7 @@ public class FileSinkCompactor<InputT>
         implements Compactor<FileSinkCommittable, FileCompactRequest> {
     private final FileCompactor fileCompactor;
     private final BucketWriter<InputT, String> bucketWriter;
-    private boolean commitBeforeCompact = false;
+    private boolean commitBeforeCompact = true;
 
     public FileSinkCompactor(
             FileCompactor fileCompactor, BucketWriter<InputT, String> bucketWriter) {
@@ -43,6 +43,10 @@ public class FileSinkCompactor<InputT>
 
         preCompact(request, compactingCommittables, results);
 
+        if (compactingCommittables.isEmpty()) {
+            return results;
+        }
+
         List<Path> compactingFiles =
                 compactingCommittables.stream()
                         .map(c -> FileCompactorUtil.getPath(c.getPendingFile()))
@@ -68,6 +72,7 @@ public class FileSinkCompactor<InputT>
         Iterator<FileSinkCommittable> iter = compactingCommittables.iterator();
         while (iter.hasNext()) {
             FileSinkCommittable committable = iter.next();
+            //TODO does this work for S3? probably not
             if (!FileCompactorUtil.getPath(committable.getPendingFile())
                     .getName()
                     .startsWith("..")) {
