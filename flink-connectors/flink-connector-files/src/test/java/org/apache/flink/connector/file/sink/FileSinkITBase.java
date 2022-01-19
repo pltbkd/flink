@@ -139,7 +139,10 @@ public abstract class FileSinkITBase extends TestLogger {
                 .withBucketAssigner(new ModuloBucketAssigner(NUM_BUCKETS))
                 .withRollingPolicy(new PartSizeAndCheckpointRollingPolicy(1024))
                 .enableCompact(
-                        Builder.newBuilder().withSizeThreshold(32 * 1024 * 1024).build(),
+                        Builder.newBuilder()
+                                .withSizeThreshold(32 * 1024 * 1024)
+                                .isCommitBeforeCompact(true)
+                                .build(),
                         decoderBasedCompactor)
                 .build();
     }

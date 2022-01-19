@@ -4,6 +4,8 @@ public interface CommittableTraits {
 
     interface InProgressPathAware {
         Path getInProgressPath();
+
+        Path getCommittedPath();
     }
 
     interface SizeAware {

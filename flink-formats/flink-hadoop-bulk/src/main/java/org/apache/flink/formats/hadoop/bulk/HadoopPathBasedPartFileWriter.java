@@ -130,6 +130,11 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
         public org.apache.flink.core.fs.Path getInProgressPath() {
             return new org.apache.flink.core.fs.Path(tempFilePath.toUri());
         }
+
+        @Override
+        public org.apache.flink.core.fs.Path getCommittedPath() {
+            return new org.apache.flink.core.fs.Path(targetFilePath.toUri());
+        }
     }
 
     @VisibleForTesting

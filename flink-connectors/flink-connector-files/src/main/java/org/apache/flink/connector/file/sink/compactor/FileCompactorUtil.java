@@ -13,11 +13,18 @@ public class FileCompactorUtil {
 
     public static Path createCompactedFile(Path uncompactedPath) {
         // TODO verify
-        return new Path(
-                uncompactedPath.getParent(), COMPACTED_PREFIX + uncompactedPath.getName());
+        return new Path(uncompactedPath.getParent(), COMPACTED_PREFIX + uncompactedPath.getName());
     }
 
-    public static Path getPath(PendingFileRecoverable pendingFileRecoverable) {
+    public static Path getInProgressPath(PendingFileRecoverable pendingFileRecoverable) {
+        return getPath(pendingFileRecoverable, true);
+    }
+
+    public static Path getCommittedPath(PendingFileRecoverable pendingFileRecoverable) {
+        return getPath(pendingFileRecoverable, false);
+    }
+
+    private static Path getPath(PendingFileRecoverable pendingFileRecoverable, boolean inProgress) {
         if (pendingFileRecoverable instanceof InProgressPathAware) {
             return ((InProgressPathAware) pendingFileRecoverable).getInProgressPath();
         }
@@ -31,7 +38,11 @@ public class FileCompactorUtil {
                             .getCommitRecoverable();
 
             if (commitRecoverable instanceof InProgressPathAware) {
-                return ((InProgressPathAware) commitRecoverable).getInProgressPath();
+                if (inProgress) {
+                    return ((InProgressPathAware) commitRecoverable).getInProgressPath();
+                } else {
+                    return ((InProgressPathAware) commitRecoverable).getCommittedPath();
+                }
             }
         }
 

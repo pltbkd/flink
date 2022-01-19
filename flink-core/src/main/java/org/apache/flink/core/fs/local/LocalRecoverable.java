@@ -80,6 +80,11 @@ public class LocalRecoverable
     }
 
     @Override
+    public Path getCommittedPath() {
+        return new Path(targetFile.getPath());
+    }
+
+    @Override
     public long getSize() {
         return offset;
     }

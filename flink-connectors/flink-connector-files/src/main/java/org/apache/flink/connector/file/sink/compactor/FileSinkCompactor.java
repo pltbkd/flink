@@ -8,7 +8,6 @@ import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWr
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -41,16 +40,12 @@ public class FileSinkCompactor<InputT>
             }
         }
 
-        preCompact(request, compactingCommittables, results);
+        List<Path> compactingFiles = getCompactingPath(request, compactingCommittables, results);
 
-        if (compactingCommittables.isEmpty()) {
+        if (compactingFiles.isEmpty()) {
             return results;
         }
 
-        List<Path> compactingFiles =
-                compactingCommittables.stream()
-                        .map(c -> FileCompactorUtil.getPath(c.getPendingFile()))
-                        .collect(Collectors.toList());
         PendingFileRecoverable compactedPendingFile = doCompact(request, compactingFiles);
         FileSinkCommittable compacted =
                 new FileSinkCommittable(request.getBucketId(), compactedPendingFile);
@@ -60,29 +55,37 @@ public class FileSinkCompactor<InputT>
         return results;
     }
 
-    private void preCompact(
+    // results: side output pass through committables
+    private List<Path> getCompactingPath(
             FileCompactRequest request,
             List<FileSinkCommittable> compactingCommittables,
             List<FileSinkCommittable> results)
             throws IOException {
         if (!commitBeforeCompact) {
-            return;
+            // return in progress path of these committables
+            return compactingCommittables.stream()
+                    .map(c -> FileCompactorUtil.getInProgressPath(c.getPendingFile()))
+                    .collect(Collectors.toList());
         }
 
-        Iterator<FileSinkCommittable> iter = compactingCommittables.iterator();
-        while (iter.hasNext()) {
-            FileSinkCommittable committable = iter.next();
-            //TODO does this work for S3? probably not
-            if (!FileCompactorUtil.getPath(committable.getPendingFile())
+        List<Path> compactingFiles = new ArrayList<>();
+
+        for (FileSinkCommittable committable : compactingCommittables) {
+            // TODO directly check if the committed path is a visible one?
+            if (!FileCompactorUtil.getCommittedPath(committable.getPendingFile())
                     .getName()
-                    .startsWith("..")) {
-                // pass through
+                    .startsWith(".")) {
+                // the file will be visible once committed, so it can not be compacted
+                // pass through, add to results, do not add to compacting files
                 results.add(committable);
-                iter.remove();
             } else {
+                // commit the pending file and compact with the committed path
                 bucketWriter.recoverPendingFile(committable.getPendingFile()).commitAfterRecovery();
+                compactingFiles.add(
+                        FileCompactorUtil.getCommittedPath(committable.getPendingFile()));
             }
         }
+        return compactingFiles;
     }
 
     private PendingFileRecoverable doCompact(FileCompactRequest request, List<Path> compactingFiles)

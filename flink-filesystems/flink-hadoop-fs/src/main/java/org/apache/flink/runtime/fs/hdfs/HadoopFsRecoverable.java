@@ -79,6 +79,11 @@ public class HadoopFsRecoverable
     }
 
     @Override
+    public org.apache.flink.core.fs.Path getCommittedPath() {
+        return new org.apache.flink.core.fs.Path(targetFile.toUri());
+    }
+
+    @Override
     public long getSize() {
         return offset;
     }

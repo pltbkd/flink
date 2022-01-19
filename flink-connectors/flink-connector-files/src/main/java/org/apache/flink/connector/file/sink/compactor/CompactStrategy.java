@@ -10,13 +10,17 @@ public class CompactStrategy implements Serializable {
     // TODO not implemented
     private final boolean allowCrossCheckpoint;
 
-    // TODO
     private boolean commitBeforeCompact = false;
 
-    public CompactStrategy(long sizeThreshold, long maxIntervalMs, boolean allowCrossCheckpoint) {
+    public CompactStrategy(
+            long sizeThreshold,
+            long maxIntervalMs,
+            boolean allowCrossCheckpoint,
+            boolean commitBeforeCompact) {
         this.sizeThreshold = sizeThreshold;
         this.maxIntervalMs = maxIntervalMs;
         this.allowCrossCheckpoint = allowCrossCheckpoint;
+        this.commitBeforeCompact = commitBeforeCompact;
     }
 
     public long getSizeThreshold() {
@@ -39,6 +43,7 @@ public class CompactStrategy implements Serializable {
         private long sizeThreshold = -1;
         private long maxIntervalMs = -1;
         private boolean allowCrossCheckpoint = true;
+        private boolean commitBeforeCompact = false;
 
         public static CompactStrategy.Builder newBuilder() {
             return new CompactStrategy.Builder();
@@ -54,13 +59,19 @@ public class CompactStrategy implements Serializable {
             return this;
         }
 
-        public CompactStrategy.Builder allowCrossCheckpoint(boolean allow) {
-            this.allowCrossCheckpoint = allow;
+        public CompactStrategy.Builder allowCrossCheckpoint(boolean allowCrossCheckpoint) {
+            this.allowCrossCheckpoint = allowCrossCheckpoint;
+            return this;
+        }
+
+        public CompactStrategy.Builder isCommitBeforeCompact(boolean commitBeforeCompact) {
+            this.commitBeforeCompact = commitBeforeCompact;
             return this;
         }
 
         public CompactStrategy build() {
-            return new CompactStrategy(sizeThreshold, maxIntervalMs, allowCrossCheckpoint);
+            return new CompactStrategy(
+                    sizeThreshold, maxIntervalMs, allowCrossCheckpoint, commitBeforeCompact);
         }
     }
 }
