@@ -22,6 +22,8 @@ import org.apache.flink.api.common.io.FileInputFormat;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.connector.file.sink.compactor.CompactStrategy.Builder;
+import org.apache.flink.connector.file.sink.compactor.DecoderBasedReader;
+import org.apache.flink.connector.file.sink.compactor.DecoderBasedReader.Decoder;
 import org.apache.flink.connector.file.sink.compactor.FileCompactor;
 import org.apache.flink.connector.file.sink.compactor.InputFormatBasedReader;
 import org.apache.flink.connector.file.sink.compactor.RecordWiseFileCompactor;
@@ -125,6 +127,10 @@ public abstract class FileSinkITBase extends TestLogger {
     }
 
     protected FileSink<Integer> createFileSink(String path) {
+        FileCompactor decoderBasedCompactor =
+                new RecordWiseFileCompactor<>(
+                        new DecoderBasedReader.Factory<>(
+                                (Decoder<Integer>) input -> new DataInputStream(input).readInt()));
         FileCompactor inputFormatBasedCompactor =
                 new RecordWiseFileCompactor<>(
                         new InputFormatBasedReader.Factory<>(IntInputFormat::new));
@@ -134,7 +140,7 @@ public abstract class FileSinkITBase extends TestLogger {
                 .withRollingPolicy(new PartSizeAndCheckpointRollingPolicy(1024))
                 .enableCompact(
                         Builder.newBuilder().withSizeThreshold(32 * 1024 * 1024).build(),
-                        simpleConcatCompactor)
+                        decoderBasedCompactor)
                 .build();
     }
 

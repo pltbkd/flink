@@ -1,6 +1,5 @@
 package org.apache.flink.connector.file.sink.compactor;
 
-import org.apache.flink.connector.file.sink.compactor.RecordWiseFileCompactor.Reader;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.Path;
 
@@ -19,7 +18,10 @@ public class DecoderBasedReader<T> implements RecordWiseFileCompactor.Reader<T> 
 
     @Override
     public T read() throws IOException {
-        return decoder.decodeNext(input);
+        if (input.available() > 0) {
+            return decoder.decodeNext(input);
+        }
+        return null;
     }
 
     @Override
