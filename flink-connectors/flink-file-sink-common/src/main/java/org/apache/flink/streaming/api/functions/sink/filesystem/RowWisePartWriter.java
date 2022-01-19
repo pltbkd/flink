@@ -24,6 +24,7 @@ import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
+import java.io.OutputStream;
 
 /**
  * A {@link InProgressFileWriter} for row-wise formats that use an {@link Encoder}. This also
@@ -31,9 +32,12 @@ import java.io.IOException;
  */
 @Internal
 public final class RowWisePartWriter<IN, BucketID>
-        extends OutputStreamBasedPartFileWriter<IN, BucketID> {
+        extends OutputStreamBasedPartFileWriter<IN, BucketID>
+        implements OutputStreamBasedCompactingFileWriter {
 
     private final Encoder<IN> encoder;
+
+    private CompactingFileWriter.Type writeType = null;
 
     public RowWisePartWriter(
             final BucketID bucketId,
@@ -46,7 +50,32 @@ public final class RowWisePartWriter<IN, BucketID>
 
     @Override
     public void write(final IN element, final long currentTime) throws IOException {
+        ensureWriteType(Type.RECORD_WISE);
         encoder.encode(element, currentPartStream);
         markWrite(currentTime);
+    }
+
+    @Override
+    public OutputStream asOutputStream() throws IOException {
+        ensureWriteType(Type.OUTPUT_STREAM);
+        return currentPartStream;
+    }
+
+    private void ensureWriteType(Type type) {
+        if (this.writeType == null) {
+            synchronized (this) {
+                if (this.writeType == null) {
+                    this.writeType = type;
+                }
+            }
+        }
+        if (this.writeType != type) {
+            throw new IllegalStateException(
+                    "Writer has already been opened as "
+                            + writeType
+                            + " type, but trying to reopen it as "
+                            + type
+                            + " type.");
+        }
     }
 }

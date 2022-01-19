@@ -31,18 +31,13 @@ import org.apache.flink.api.connector.sink2.StatefulSink.WithCompatibleState;
 import org.apache.flink.api.connector.sink2.TwoPhaseCommittingSink;
 import org.apache.flink.api.connector.sink2.WithPreCommitTopology;
 import org.apache.flink.connector.file.sink.committer.FileCommitter;
-import org.apache.flink.connector.file.sink.compactor.CompactCoordinator;
-import org.apache.flink.connector.file.sink.compactor.CompactOperator;
-import org.apache.flink.connector.file.sink.compactor.CompactRequestPacker;
 import org.apache.flink.connector.file.sink.compactor.CompactStrategy;
 import org.apache.flink.connector.file.sink.compactor.Compactor;
 import org.apache.flink.connector.file.sink.compactor.FileCompactRequest;
-import org.apache.flink.connector.file.sink.compactor.FileCompactRequestPacker;
 import org.apache.flink.connector.file.sink.compactor.FileCompactor;
-import org.apache.flink.connector.file.sink.compactor.FileCompactor.FSOutputStreamBasedCompactor;
-import org.apache.flink.connector.file.sink.compactor.FileCompactor.FilePathBasedCompactor;
-import org.apache.flink.connector.file.sink.compactor.FileCompactor.InProgressFileBasedCompactor;
-import org.apache.flink.connector.file.sink.compactor.FileCompactorAdapter;
+import org.apache.flink.connector.file.sink.compactor.FileSinkCompactCoordinatorFactory;
+import org.apache.flink.connector.file.sink.compactor.FileSinkCompactOperatorFactory;
+import org.apache.flink.connector.file.sink.compactor.FileSinkCompactor;
 import org.apache.flink.connector.file.sink.writer.DefaultFileWriterBucketFactory;
 import org.apache.flink.connector.file.sink.writer.FileWriter;
 import org.apache.flink.connector.file.sink.writer.FileWriterBucketFactory;
@@ -195,12 +190,8 @@ public class FileSink<IN>
                 basePath, bulkWriterFactory, new DateTimeBucketAssigner<>());
     }
 
-    public FileCompactor<?> createFileCompactor() throws IOException {
-        return bucketsBuilder.createFileCompactor();
-    }
-
-    private BucketWriter<IN, String> createBucketWriter() throws IOException {
-        return bucketsBuilder.createBucketWriter();
+    public Compactor<FileSinkCommittable, FileCompactRequest> createCompactor() throws IOException {
+        return bucketsBuilder.createCompactor();
     }
 
     @Override
@@ -212,59 +203,25 @@ public class FileSink<IN>
             return committableStream;
         }
 
-        CompactRequestPacker<FileSinkCommittable, FileCompactRequest> packingStrategy =
-                FileCompactRequestPacker.Builder.newBuilder()
-                        .withSizeThreshold(strategy.getSizeThreshold())
-                        .withMaxIntervalMs(strategy.getMaxIntervalMs())
-                        .allowCrossCheckpoint(strategy.isAllowCrossCheckpoint())
-                        .build();
-        CompactCoordinator<FileSinkCommittable, FileCompactRequest> coordinator =
-                new CompactCoordinator<>(packingStrategy, getCommittableSerializer());
-        TypeInformation<FileCompactRequest> requestType =
-                TypeInformation.of(FileCompactRequest.class);
         SingleOutputStreamOperator<FileCompactRequest> coordinatorOp =
                 committableStream
                         .rescale()
-                        .transform("compact-coordinator", requestType, coordinator)
+                        .transform(
+                                "Compactor_Coordinator",
+                                TypeInformation.of(FileCompactRequest.class),
+                                new FileSinkCompactCoordinatorFactory(this, strategy))
                         .setParallelism(1)
                         .setMaxParallelism(1);
 
-        Compactor<FileSinkCommittable, FileCompactRequest> compactor = null;
-        try {
-            // TODO
-            FileCompactor<?> fileCompactor = createFileCompactor();
-            if (fileCompactor instanceof FileCompactor.FilePathBasedCompactor) {
-                compactor =
-                        FileCompactorAdapter.forFilePathBasedCompactor(
-                                (FilePathBasedCompactor) fileCompactor);
-            }
-            if (fileCompactor instanceof FileCompactor.FSOutputStreamBasedCompactor) {
-                compactor =
-                        FileCompactorAdapter.forFSOutputStreamBasedCompactor(
-                                (FSOutputStreamBasedCompactor) fileCompactor);
-            }
-            if (fileCompactor instanceof FileCompactor.InProgressFileBasedCompactor) {
-                compactor =
-                        FileCompactorAdapter.forInProgressFileBasedCompactor(
-                                (InProgressFileBasedCompactor<IN>) fileCompactor,
-                                this::createBucketWriter);
-            }
-            if (compactor == null) {
-                throw new RuntimeException(
-                        "Unsupported file compactor:" + fileCompactor.getClass().getName());
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("Cannot create compactor", e);
-        }
-        CompactOperator<FileSinkCommittable, FileCompactRequest> compactorOp =
-                new CompactOperator<>(compactor, 4, requestType);
         TypeInformation<CommittableMessage<FileSinkCommittable>> committableType =
                 committableStream.getType();
-
         // TODO how to shuffle here? or broadcast and filter in Compactor?
         return coordinatorOp
                 .shuffle()
-                .transform("compact-operator", committableType, compactorOp)
+                .transform(
+                        "Compactor_Operator",
+                        committableType,
+                        new FileSinkCompactOperatorFactory(this, 4))
                 .setParallelism(committableStream.getParallelism());
     }
 
@@ -300,10 +257,8 @@ public class FileSink<IN>
         abstract CompactStrategy getCompactStrategy();
 
         @Internal
-        abstract FileCompactor<?> createFileCompactor() throws IOException;
-
-        @Internal
-        abstract BucketWriter<IN, String> createBucketWriter() throws IOException;
+        abstract Compactor<FileSinkCommittable, FileCompactRequest> createCompactor()
+                throws IOException;
     }
 
     /** A builder for configuring the sink for row-wise encoding formats. */
@@ -328,7 +283,9 @@ public class FileSink<IN>
 
         private CompactStrategy compactStrategy;
 
-        private FileCompactor.Factory<?> fileCompactorFactory;
+        private FileCompactor.Factory fileCompactorFactory;
+
+        private FileCompactor fileCompactor;
 
         protected RowFormatBuilder(
                 Path basePath, Encoder<IN> encoder, BucketAssigner<IN, String> bucketAssigner) {
@@ -379,10 +336,9 @@ public class FileSink<IN>
             return self();
         }
 
-        public T enableCompact(
-                final CompactStrategy strategy, FileCompactor.Factory<?> compactorFactory) {
+        public T enableCompact(final CompactStrategy strategy, FileCompactor compactor) {
             this.compactStrategy = strategy;
-            this.fileCompactorFactory = compactorFactory;
+            this.fileCompactor = compactor;
             return self();
         }
 
@@ -416,11 +372,8 @@ public class FileSink<IN>
         }
 
         @Override
-        FileCompactor<?> createFileCompactor() throws IOException {
-            if (compactStrategy == null) {
-                return null;
-            }
-            return fileCompactorFactory.create();
+        Compactor<FileSinkCommittable, FileCompactRequest> createCompactor() throws IOException {
+            return new FileSinkCompactor<>(fileCompactor, createBucketWriter());
         }
 
         @Override
@@ -483,7 +436,7 @@ public class FileSink<IN>
 
         private CompactStrategy compactStrategy;
 
-        private FileCompactor.Factory<?> fileCompactorFactory;
+        private FileCompactor.Factory fileCompactorFactory;
 
         protected BulkFormatBuilder(
                 Path basePath,
@@ -589,11 +542,8 @@ public class FileSink<IN>
         }
 
         @Override
-        FileCompactor<?> createFileCompactor() throws IOException {
-            if (compactStrategy == null) {
-                return null;
-            }
-            return fileCompactorFactory.create();
+        Compactor<FileSinkCommittable, FileCompactRequest> createCompactor() throws IOException {
+            return new FileSinkCompactor<>(fileCompactorFactory.create(), createBucketWriter());
         }
 
         @Override

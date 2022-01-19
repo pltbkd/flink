@@ -35,7 +35,7 @@ import static org.apache.flink.connector.file.table.stream.compact.CompactMessag
 import static org.apache.flink.connector.file.table.stream.compact.CompactMessages.InputFile;
 
 /** Test for {@link CompactFileWriter}. */
-public class CompactFileWriterTest extends AbstractCompactTestBase {
+public class CompactingFileWriterTest extends AbstractCompactTestBase {
 
     @Test
     public void testEmitEndCheckpointAfterEndInput() throws Exception {

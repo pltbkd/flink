@@ -1,24 +1,19 @@
 package org.apache.flink.connector.file.sink.compactor;
 
-import org.apache.flink.core.fs.FSDataOutputStream;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter;
+import org.apache.flink.streaming.api.functions.sink.filesystem.CompactingFileWriter;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.List;
 
-public interface FileCompactor<OUT> {
+public interface FileCompactor extends Serializable {
 
-    void compact(List<Path> inputFiles, OUT output) throws Exception;
+    CompactingFileWriter.Type getWriterType();
 
-    interface FilePathBasedCompactor extends FileCompactor<Path> {}
+    void compact(List<Path> inputFiles, CompactingFileWriter writer) throws Exception;
 
-    interface FSOutputStreamBasedCompactor extends FileCompactor<FSDataOutputStream> {}
-
-    interface InProgressFileBasedCompactor<IN>
-            extends FileCompactor<InProgressFileWriter<IN, String>> {}
-
-    interface Factory<OUT> {
-        FileCompactor<OUT> create() throws IOException;
+    interface Factory {
+        FileCompactor create() throws IOException;
     }
 }

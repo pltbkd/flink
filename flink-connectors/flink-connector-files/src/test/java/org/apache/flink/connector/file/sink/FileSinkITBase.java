@@ -22,6 +22,10 @@ import org.apache.flink.api.common.io.FileInputFormat;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.connector.file.sink.compactor.CompactStrategy.Builder;
+import org.apache.flink.connector.file.sink.compactor.FileCompactor;
+import org.apache.flink.connector.file.sink.compactor.InputFormatBasedReader;
+import org.apache.flink.connector.file.sink.compactor.RecordWiseFileCompactor;
+import org.apache.flink.connector.file.sink.compactor.SimpleConcatFileCompactor;
 import org.apache.flink.connector.file.sink.utils.IntegerFileSinkTestDataUtils;
 import org.apache.flink.connector.file.sink.utils.IntegerFileSinkTestDataUtils.IntEncoder;
 import org.apache.flink.connector.file.sink.utils.IntegerFileSinkTestDataUtils.ModuloBucketAssigner;
@@ -100,12 +104,9 @@ public abstract class FileSinkITBase extends TestLogger {
             this.intStream = new DataInputStream(stream);
         }
 
-        private int lastAvail;
-
         @Override
         public boolean reachedEnd() throws IOException {
-            lastAvail = intStream.available();
-            return lastAvail <= 0;
+            return intStream.available() <= 0;
         }
 
         public static final Object lock = new Object();
@@ -113,16 +114,7 @@ public abstract class FileSinkITBase extends TestLogger {
         @Override
         public Integer nextRecord(Integer reuse) throws IOException {
             synchronized (lock) {
-                int availBefore = -1;
-                int availAfter = -1;
-                try {
-                    availBefore = intStream.available();
-                    int elem = intStream.readInt();
-                    availAfter = intStream.available();
-                    return elem;
-                } catch (IOException e) {
-                    throw e;
-                }
+                return intStream.readInt();
             }
         }
 
@@ -133,12 +125,16 @@ public abstract class FileSinkITBase extends TestLogger {
     }
 
     protected FileSink<Integer> createFileSink(String path) {
+        FileCompactor inputFormatBasedCompactor =
+                new RecordWiseFileCompactor<>(
+                        new InputFormatBasedReader.Factory<>(IntInputFormat::new));
+        FileCompactor simpleConcatCompactor = new SimpleConcatFileCompactor();
         return FileSink.forRowFormat(new Path(path), new IntEncoder())
                 .withBucketAssigner(new ModuloBucketAssigner(NUM_BUCKETS))
                 .withRollingPolicy(new PartSizeAndCheckpointRollingPolicy(1024))
-                .enableGeneralCompacting(
+                .enableCompact(
                         Builder.newBuilder().withSizeThreshold(32 * 1024 * 1024).build(),
-                        IntInputFormat::new)
+                        simpleConcatCompactor)
                 .build();
     }
 
