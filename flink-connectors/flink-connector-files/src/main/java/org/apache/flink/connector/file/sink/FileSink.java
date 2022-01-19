@@ -39,6 +39,9 @@ import org.apache.flink.connector.file.sink.compactor.Compactor;
 import org.apache.flink.connector.file.sink.compactor.FileCompactRequest;
 import org.apache.flink.connector.file.sink.compactor.FileCompactRequestPacker;
 import org.apache.flink.connector.file.sink.compactor.FileCompactor;
+import org.apache.flink.connector.file.sink.compactor.FileCompactor.FSOutputStreamBasedCompactor;
+import org.apache.flink.connector.file.sink.compactor.FileCompactor.FilePathBasedCompactor;
+import org.apache.flink.connector.file.sink.compactor.FileCompactor.InProgressFileBasedCompactor;
 import org.apache.flink.connector.file.sink.compactor.FileCompactorAdapter;
 import org.apache.flink.connector.file.sink.writer.DefaultFileWriterBucketFactory;
 import org.apache.flink.connector.file.sink.writer.FileWriter;
@@ -196,6 +199,10 @@ public class FileSink<IN>
         return bucketsBuilder.createFileCompactor();
     }
 
+    private BucketWriter<IN, String> createBucketWriter() throws IOException {
+        return bucketsBuilder.createBucketWriter();
+    }
+
     @Override
     public DataStream<CommittableMessage<FileSinkCommittable>> addPreCommitTopology(
             DataStream<CommittableMessage<FileSinkCommittable>> committableStream) {
@@ -222,9 +229,30 @@ public class FileSink<IN>
                         .setParallelism(1)
                         .setMaxParallelism(1);
 
-        Compactor<FileSinkCommittable, FileCompactRequest> compactor;
+        Compactor<FileSinkCommittable, FileCompactRequest> compactor = null;
         try {
-            compactor = FileCompactorAdapter.forCompactor(createFileCompactor());
+            // TODO
+            FileCompactor<?> fileCompactor = createFileCompactor();
+            if (fileCompactor instanceof FileCompactor.FilePathBasedCompactor) {
+                compactor =
+                        FileCompactorAdapter.forFilePathBasedCompactor(
+                                (FilePathBasedCompactor) fileCompactor);
+            }
+            if (fileCompactor instanceof FileCompactor.FSOutputStreamBasedCompactor) {
+                compactor =
+                        FileCompactorAdapter.forFSOutputStreamBasedCompactor(
+                                (FSOutputStreamBasedCompactor) fileCompactor);
+            }
+            if (fileCompactor instanceof FileCompactor.InProgressFileBasedCompactor) {
+                compactor =
+                        FileCompactorAdapter.forInProgressFileBasedCompactor(
+                                (InProgressFileBasedCompactor<IN>) fileCompactor,
+                                this::createBucketWriter);
+            }
+            if (compactor == null) {
+                throw new RuntimeException(
+                        "Unsupported file compactor:" + fileCompactor.getClass().getName());
+            }
         } catch (Exception e) {
             throw new IllegalStateException("Cannot create compactor", e);
         }
@@ -273,6 +301,9 @@ public class FileSink<IN>
 
         @Internal
         abstract FileCompactor<?> createFileCompactor() throws IOException;
+
+        @Internal
+        abstract BucketWriter<IN, String> createBucketWriter() throws IOException;
     }
 
     /** A builder for configuring the sink for row-wise encoding formats. */
@@ -412,7 +443,7 @@ public class FileSink<IN>
                     bucketWriter.getProperties().getInProgressFileRecoverableSerializer());
         }
 
-        private BucketWriter<IN, String> createBucketWriter() throws IOException {
+        BucketWriter<IN, String> createBucketWriter() throws IOException {
             return new RowWiseBucketWriter<>(
                     FileSystem.get(basePath.toUri()).createRecoverableWriter(), encoder);
         }
@@ -585,7 +616,7 @@ public class FileSink<IN>
                     bucketWriter.getProperties().getInProgressFileRecoverableSerializer());
         }
 
-        private BucketWriter<IN, String> createBucketWriter() throws IOException {
+        BucketWriter<IN, String> createBucketWriter() throws IOException {
             return new BulkBucketWriter<>(
                     FileSystem.get(basePath.toUri()).createRecoverableWriter(), writerFactory);
         }

@@ -3,10 +3,14 @@ package org.apache.flink.connector.file.sink.compactor;
 import org.apache.flink.connector.file.sink.FileSinkCommittable;
 import org.apache.flink.connector.file.sink.compactor.FileCompactor.FSOutputStreamBasedCompactor;
 import org.apache.flink.connector.file.sink.compactor.FileCompactor.FilePathBasedCompactor;
+import org.apache.flink.connector.file.sink.compactor.FileCompactor.InProgressFileBasedCompactor;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
+import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
+import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter.PendingFileRecoverable;
 import org.apache.flink.streaming.api.functions.sink.filesystem.OutputStreamBasedPartFileWriter.OutputStreamBasedPendingFileRecoverable;
+import org.apache.flink.util.function.SerializableSupplierWithException;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -15,16 +19,21 @@ import java.util.List;
 public abstract class FileCompactorAdapter
         implements Compactor<FileSinkCommittable, FileCompactRequest> {
 
-    public static FileCompactorAdapter forCompactor(FileCompactor<?> fileCompactor) {
-        if (fileCompactor instanceof FilePathBasedCompactor) {
-            return new FilePathBasedCompactorAdapter((FilePathBasedCompactor) fileCompactor);
-        }
-        if (fileCompactor instanceof FSOutputStreamBasedCompactor) {
-            return new FSOutputStreamBasedCompactorAdapter(
-                    (FSOutputStreamBasedCompactor) fileCompactor);
-        }
-        throw new RuntimeException(
-                "Unsupported file compactor:" + fileCompactor.getClass().getName());
+    public static FileCompactorAdapter forFilePathBasedCompactor(
+            FilePathBasedCompactor fileCompactor) {
+        return new FilePathBasedCompactorAdapter(fileCompactor);
+    }
+
+    public static FileCompactorAdapter forFSOutputStreamBasedCompactor(
+            FSOutputStreamBasedCompactor fileCompactor) {
+        return new FSOutputStreamBasedCompactorAdapter(fileCompactor);
+    }
+
+    public static <InputT> FileCompactorAdapter forInProgressFileBasedCompactor(
+            InProgressFileBasedCompactor<InputT> fileCompactor,
+            SerializableSupplierWithException<BucketWriter<InputT, String>, IOException>
+                    bucketWriterSupplier) {
+        return new InProgressFileBasedCompactorAdapter<>(fileCompactor, bucketWriterSupplier);
     }
 
     @Override
@@ -54,7 +63,7 @@ public abstract class FileCompactorAdapter
     }
 
     protected abstract PendingFileRecoverable doCompact(
-            FileCompactRequest request, List<Path> compactingFiles) throws IOException;
+            FileCompactRequest request, List<Path> compactingFiles) throws Exception;
 
     private static class FilePathBasedCompactorAdapter extends FileCompactorAdapter {
         private final FilePathBasedCompactor fileCompactor;
@@ -84,12 +93,55 @@ public abstract class FileCompactorAdapter
 
         @Override
         protected PendingFileRecoverable doCompact(
-                FileCompactRequest request, List<Path> compactingFiles) throws IOException {
+                FileCompactRequest request, List<Path> compactingFiles) throws Exception {
             // TODO
             RecoverableFsDataOutputStream os = null;
             fileCompactor.compact(compactingFiles, os);
             return new OutputStreamBasedPendingFileRecoverable(
                     os.closeForCommit().getRecoverable());
+        }
+    }
+
+    private static class InProgressFileBasedCompactorAdapter<InputT> extends FileCompactorAdapter {
+        public static final String COMPACTED_PREFIX = ".compacted-";
+
+        private final InProgressFileBasedCompactor<InputT> fileCompactor;
+        private final SerializableSupplierWithException<BucketWriter<InputT, String>, IOException>
+                bucketWriterSupplier;
+
+        private BucketWriter<InputT, String> bucketWriter;
+
+        private InProgressFileBasedCompactorAdapter(
+                InProgressFileBasedCompactor<InputT> fileCompactor,
+                SerializableSupplierWithException<BucketWriter<InputT, String>, IOException>
+                        bucketWriterSupplier) {
+            this.fileCompactor = fileCompactor;
+            this.bucketWriterSupplier = bucketWriterSupplier;
+        }
+
+        @Override
+        protected PendingFileRecoverable doCompact(
+                FileCompactRequest request, List<Path> compactingFiles) throws Exception {
+            // TODO
+            if (bucketWriter == null) {
+                synchronized (bucketWriterSupplier) {
+                    if (bucketWriter == null) {
+                        bucketWriter = bucketWriterSupplier.get();
+                    }
+                }
+            }
+            Path targetPath = createCompactedFile(compactingFiles.get(0));
+            InProgressFileWriter<InputT, String> fileWriter =
+                    bucketWriter.openNewInProgressFile(
+                            request.getBucketId(), targetPath, System.currentTimeMillis());
+            fileCompactor.compact(compactingFiles, fileWriter);
+            return fileWriter.closeForCommit();
+        }
+
+        private static Path createCompactedFile(Path uncompactedPath) {
+            // TODO verify
+            return new Path(
+                    uncompactedPath.getParent(), COMPACTED_PREFIX + uncompactedPath.getName());
         }
     }
 }
