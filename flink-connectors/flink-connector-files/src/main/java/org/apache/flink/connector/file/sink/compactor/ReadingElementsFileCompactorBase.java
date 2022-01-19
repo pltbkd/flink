@@ -47,7 +47,8 @@ public abstract class ReadingElementsFileCompactorBase<InputT, OutputT>
     protected abstract void doWrite(InputT record, OutputT output) throws IOException;
 
     public static class ReadingElementsFileCompactor<InputT>
-            extends ReadingElementsFileCompactorBase<InputT, FSDataOutputStream> {
+            extends ReadingElementsFileCompactorBase<InputT, FSDataOutputStream>
+            implements FSOutputStreamBasedCompactor {
         private final Encoder<InputT> encoder;
 
         public ReadingElementsFileCompactor(
@@ -66,7 +67,8 @@ public abstract class ReadingElementsFileCompactorBase<InputT, OutputT>
     }
 
     public static class ReadingElementsInProgressFileCompactor<InputT>
-            extends ReadingElementsFileCompactorBase<InputT, InProgressFileWriter<InputT, String>> {
+            extends ReadingElementsFileCompactorBase<InputT, InProgressFileWriter<InputT, String>>
+            implements InProgressFileBasedCompactor<InputT> {
 
         public ReadingElementsInProgressFileCompactor(
                 Configuration config,
