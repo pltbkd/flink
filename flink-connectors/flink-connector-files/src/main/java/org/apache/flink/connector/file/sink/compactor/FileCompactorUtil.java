@@ -9,6 +9,13 @@ import org.apache.flink.streaming.api.functions.sink.filesystem.OutputStreamBase
 import org.apache.flink.streaming.api.functions.sink.filesystem.OutputStreamBasedPartFileWriter.OutputStreamBasedPendingFileRecoverable;
 
 public class FileCompactorUtil {
+    public static final String COMPACTED_PREFIX = ".compacted-";
+
+    public static Path createCompactedPendingFile(Path uncompactedPath) {
+        // TODO verify
+        return new Path(
+                uncompactedPath.getParent(), COMPACTED_PREFIX + uncompactedPath.getName());
+    }
 
     public static Path getPath(PendingFileRecoverable pendingFileRecoverable) {
         if (pendingFileRecoverable instanceof InProgressPathAware) {

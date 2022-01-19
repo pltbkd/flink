@@ -4,8 +4,10 @@ import org.apache.flink.connector.file.sink.FileSinkCommittable;
 import org.apache.flink.connector.file.sink.compactor.FileCompactor.FSOutputStreamBasedCompactor;
 import org.apache.flink.connector.file.sink.compactor.FileCompactor.FilePathBasedCompactor;
 import org.apache.flink.connector.file.sink.compactor.FileCompactor.InProgressFileBasedCompactor;
+import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
+import org.apache.flink.core.fs.RecoverableWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter.PendingFileRecoverable;
@@ -74,13 +76,15 @@ public abstract class FileCompactorAdapter
 
         @Override
         protected PendingFileRecoverable doCompact(
-                FileCompactRequest request, List<Path> compactingFiles) {
-            // TODO HadoopPathBasedPendingFile is implemented inside flink-hadoop-bulk, and is not
-            // accessible
-            Path targetPath = getPendingPath(request);
+                FileCompactRequest request, List<Path> compactingFiles) throws Exception {
+            Path targetPath = FileCompactorUtil.createCompactedPendingFile(compactingFiles.get(0));
             fileCompactor.compact(compactingFiles, targetPath);
-            // TODO
-            return new HadoopPathBasedPendingFile(targetPath, toCommittedPath(targetPath));
+            return createPendingFile(targetPath);
+        }
+
+        private PendingFileRecoverable createPendingFile(Path targetPath) {
+            //TODO
+            return null;
         }
     }
 
@@ -94,17 +98,18 @@ public abstract class FileCompactorAdapter
         @Override
         protected PendingFileRecoverable doCompact(
                 FileCompactRequest request, List<Path> compactingFiles) throws Exception {
-            // TODO
-            RecoverableFsDataOutputStream os = null;
-            fileCompactor.compact(compactingFiles, os);
+            Path targetPath = FileCompactorUtil.createCompactedPendingFile(compactingFiles.get(0));
+            FileSystem fs = targetPath.getFileSystem();
+            RecoverableWriter writer = fs.createRecoverableWriter();
+
+            RecoverableFsDataOutputStream out = writer.open(targetPath);
+            fileCompactor.compact(compactingFiles, out);
             return new OutputStreamBasedPendingFileRecoverable(
-                    os.closeForCommit().getRecoverable());
+                    out.closeForCommit().getRecoverable());
         }
     }
 
     private static class InProgressFileBasedCompactorAdapter<InputT> extends FileCompactorAdapter {
-        public static final String COMPACTED_PREFIX = ".compacted-";
-
         private final InProgressFileBasedCompactor<InputT> fileCompactor;
         private final SerializableSupplierWithException<BucketWriter<InputT, String>, IOException>
                 bucketWriterSupplier;
@@ -130,18 +135,12 @@ public abstract class FileCompactorAdapter
                     }
                 }
             }
-            Path targetPath = createCompactedFile(compactingFiles.get(0));
+            Path targetPath = FileCompactorUtil.createCompactedPendingFile(compactingFiles.get(0));
             InProgressFileWriter<InputT, String> fileWriter =
                     bucketWriter.openNewInProgressFile(
                             request.getBucketId(), targetPath, System.currentTimeMillis());
             fileCompactor.compact(compactingFiles, fileWriter);
             return fileWriter.closeForCommit();
-        }
-
-        private static Path createCompactedFile(Path uncompactedPath) {
-            // TODO verify
-            return new Path(
-                    uncompactedPath.getParent(), COMPACTED_PREFIX + uncompactedPath.getName());
         }
     }
 }
