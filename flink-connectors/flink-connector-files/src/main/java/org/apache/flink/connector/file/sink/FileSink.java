@@ -28,6 +28,8 @@ import org.apache.flink.api.connector.sink2.StatefulSink;
 import org.apache.flink.api.connector.sink2.StatefulSink.WithCompatibleState;
 import org.apache.flink.api.connector.sink2.TwoPhaseCommittingSink;
 import org.apache.flink.connector.file.sink.committer.FileCommitter;
+import org.apache.flink.connector.file.sink.compactor.FileCompactStrategy;
+import org.apache.flink.connector.file.sink.compactor.FileCompactor;
 import org.apache.flink.connector.file.sink.writer.DefaultFileWriterBucketFactory;
 import org.apache.flink.connector.file.sink.writer.FileWriter;
 import org.apache.flink.connector.file.sink.writer.FileWriterBucketFactory;
@@ -177,6 +179,14 @@ public class FileSink<IN>
                 basePath, bulkWriterFactory, new DateTimeBucketAssigner<>());
     }
 
+    public BucketWriter<IN, String> createBucketWriter() throws IOException {
+        return bucketsBuilder.createBucketWriter();
+    }
+
+    public FileCompactor getFileCompactor() {
+        return bucketsBuilder.getCompactor();
+    }
+
     /** The base abstract class for the {@link RowFormatBuilder} and {@link BulkFormatBuilder}. */
     @Internal
     private abstract static class BucketsBuilder<IN, T extends BucketsBuilder<IN, T>>
@@ -204,6 +214,15 @@ public class FileSink<IN>
         @Internal
         abstract SimpleVersionedSerializer<FileSinkCommittable> getCommittableSerializer()
                 throws IOException;
+
+        @Internal
+        abstract FileCompactStrategy getCompactStrategy();
+
+        @Internal
+        abstract FileCompactor getCompactor();
+
+        @Internal
+        abstract BucketWriter<IN, String> createBucketWriter() throws IOException;
     }
 
     /** A builder for configuring the sink for row-wise encoding formats. */
@@ -225,6 +244,10 @@ public class FileSink<IN>
         private RollingPolicy<IN, String> rollingPolicy;
 
         private OutputFileConfig outputFileConfig;
+
+        private FileCompactStrategy compactStrategy;
+
+        private FileCompactor fileCompactor;
 
         protected RowFormatBuilder(
                 Path basePath, Encoder<IN> encoder, BucketAssigner<IN, String> bucketAssigner) {
@@ -300,6 +323,16 @@ public class FileSink<IN>
         }
 
         @Override
+        FileCompactStrategy getCompactStrategy() {
+            return compactStrategy;
+        }
+
+        @Override
+        FileCompactor getCompactor() {
+            return fileCompactor;
+        }
+
+        @Override
         SimpleVersionedSerializer<FileWriterBucketState> getWriterStateSerializer()
                 throws IOException {
             BucketWriter<IN, String> bucketWriter = createBucketWriter();
@@ -319,7 +352,7 @@ public class FileSink<IN>
                     bucketWriter.getProperties().getInProgressFileRecoverableSerializer());
         }
 
-        private BucketWriter<IN, String> createBucketWriter() throws IOException {
+        BucketWriter<IN, String> createBucketWriter() throws IOException {
             return new RowWiseBucketWriter<>(
                     FileSystem.get(basePath.toUri()).createRecoverableWriter(), encoder);
         }
@@ -356,6 +389,10 @@ public class FileSink<IN>
         private CheckpointRollingPolicy<IN, String> rollingPolicy;
 
         private OutputFileConfig outputFileConfig;
+
+        private FileCompactStrategy compactStrategy;
+
+        private FileCompactor fileCompactor;
 
         protected BulkFormatBuilder(
                 Path basePath,
@@ -449,6 +486,16 @@ public class FileSink<IN>
         }
 
         @Override
+        FileCompactStrategy getCompactStrategy() {
+            return compactStrategy;
+        }
+
+        @Override
+        FileCompactor getCompactor() {
+            return fileCompactor;
+        }
+
+        @Override
         SimpleVersionedSerializer<FileWriterBucketState> getWriterStateSerializer()
                 throws IOException {
             BucketWriter<IN, String> bucketWriter = createBucketWriter();
@@ -468,7 +515,7 @@ public class FileSink<IN>
                     bucketWriter.getProperties().getInProgressFileRecoverableSerializer());
         }
 
-        private BucketWriter<IN, String> createBucketWriter() throws IOException {
+        BucketWriter<IN, String> createBucketWriter() throws IOException {
             return new BulkBucketWriter<>(
                     FileSystem.get(basePath.toUri()).createRecoverableWriter(), writerFactory);
         }
