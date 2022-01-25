@@ -410,7 +410,10 @@ public class DataStreamSink<T> {
                 if (ssg.isPresent() && !subTransformation.getSlotSharingGroup().isPresent()) {
                     transformation.setSlotSharingGroup(ssg.get());
                 }
-                subTransformation.setParallelism(transformation.getParallelism());
+                // TODO find a better way
+                if (subTransformation.getMaxParallelism() != 1) {
+                    subTransformation.setParallelism(transformation.getParallelism());
+                }
             }
             return result;
         }

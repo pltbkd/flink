@@ -19,10 +19,10 @@
 package org.apache.flink.connector.file.sink;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWriter;
 
 import javax.annotation.Nullable;
-
 import java.io.Serializable;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -34,26 +34,51 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 @Internal
 public class FileSinkCommittable implements Serializable {
 
+    private final String bucketId;
+
     @Nullable private final InProgressFileWriter.PendingFileRecoverable pendingFile;
 
     @Nullable private final InProgressFileWriter.InProgressFileRecoverable inProgressFileToCleanup;
 
-    public FileSinkCommittable(InProgressFileWriter.PendingFileRecoverable pendingFile) {
+    @Nullable private final Path committedFileToCleanup;
+
+    public FileSinkCommittable(
+            String bucketId, InProgressFileWriter.PendingFileRecoverable pendingFile) {
+        this.bucketId = bucketId;
         this.pendingFile = checkNotNull(pendingFile);
         this.inProgressFileToCleanup = null;
+        this.committedFileToCleanup = null;
     }
 
     public FileSinkCommittable(
+            String bucketId,
             InProgressFileWriter.InProgressFileRecoverable inProgressFileToCleanup) {
+        this.bucketId = bucketId;
         this.pendingFile = null;
         this.inProgressFileToCleanup = checkNotNull(inProgressFileToCleanup);
+        this.committedFileToCleanup = null;
+    }
+
+    public FileSinkCommittable(String bucketId, Path committedFileToCleanup) {
+        this.bucketId = bucketId;
+        this.pendingFile = null;
+        this.inProgressFileToCleanup = null;
+        this.committedFileToCleanup = checkNotNull(committedFileToCleanup);
     }
 
     FileSinkCommittable(
+            String bucketId,
             @Nullable InProgressFileWriter.PendingFileRecoverable pendingFile,
-            @Nullable InProgressFileWriter.InProgressFileRecoverable inProgressFileToCleanup) {
+            @Nullable InProgressFileWriter.InProgressFileRecoverable inProgressFileToCleanup,
+            @Nullable Path committedFileToCleanup) {
+        this.bucketId = bucketId;
         this.pendingFile = pendingFile;
         this.inProgressFileToCleanup = inProgressFileToCleanup;
+        this.committedFileToCleanup = committedFileToCleanup;
+    }
+
+    public String getBucketId() {
+        return bucketId;
     }
 
     public boolean hasPendingFile() {
@@ -72,5 +97,14 @@ public class FileSinkCommittable implements Serializable {
     @Nullable
     public InProgressFileWriter.InProgressFileRecoverable getInProgressFileToCleanup() {
         return inProgressFileToCleanup;
+    }
+
+    public boolean hasCommittedFileToCleanup() {
+        return committedFileToCleanup != null;
+    }
+
+    @Nullable
+    public Path getCommittedFileToCleanup() {
+        return committedFileToCleanup;
     }
 }

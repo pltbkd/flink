@@ -19,14 +19,15 @@
 package org.apache.flink.connector.file.sink.utils;
 
 import org.apache.flink.api.common.serialization.Encoder;
+import org.apache.flink.core.fs.FileStatus;
+import org.apache.flink.core.fs.FileSystem;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketAssigner;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.SimpleVersionedStringSerializer;
 
 import java.io.DataInputStream;
 import java.io.EOFException;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -36,6 +37,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -81,16 +83,23 @@ public class IntegerFileSinkTestDataUtils {
      * are partition into different buckets according to module, and each integer will be repeated
      * by <tt>numSources</tt> times.
      *
-     * @param path The directory to check.
+     * @param pathStr The directory to check.
      * @param numRecords The total number of records.
      * @param numBuckets The number of buckets to assign.
      * @param numSources The parallelism of sources generating the sequences. Each integer will be
      *     repeat for <tt>numSources</tt> times.
      */
     public static void checkIntegerSequenceSinkOutput(
-            String path, int numRecords, int numBuckets, int numSources) throws Exception {
-        File dir = new File(path);
-        String[] subDirNames = dir.list();
+            String pathStr, int numRecords, int numBuckets, int numSources) throws Exception {
+        //        File dir = new File(path);
+        //        String[] subDirNames = dir.list();
+
+        Path path = new Path(pathStr);
+        FileSystem fs = path.getFileSystem();
+        String[] subDirNames =
+                Arrays.stream(fs.listStatus(path))
+                        .map(f -> f.getPath().getName())
+                        .toArray(String[]::new);
         assertNotNull(subDirNames);
 
         Arrays.sort(subDirNames, Comparator.comparingInt(Integer::parseInt));
@@ -99,20 +108,23 @@ public class IntegerFileSinkTestDataUtils {
             assertEquals(Integer.toString(i), subDirNames[i]);
 
             // now check its content
-            File bucketDir = new File(path, subDirNames[i]);
+            Path bucketDir = new Path(pathStr, subDirNames[i]);
             assertTrue(
-                    bucketDir.getAbsolutePath() + " Should be a existing directory",
-                    bucketDir.isDirectory());
+                    bucketDir + " Should be a existing directory",
+                    fs.getFileStatus(bucketDir).isDir());
 
             Map<Integer, Integer> counts = new HashMap<>();
-            File[] files = bucketDir.listFiles(f -> !f.getName().startsWith("."));
+            FileStatus[] files =
+                    Arrays.stream(fs.listStatus(bucketDir))
+                            .filter(f -> !f.getPath().getName().startsWith("."))
+                            .toArray(FileStatus[]::new);
             assertNotNull(files);
 
-            for (File file : files) {
-                assertTrue(file.isFile());
+            for (FileStatus file : files) {
+                assertFalse(file.isDir());
 
                 try (DataInputStream dataInputStream =
-                        new DataInputStream(new FileInputStream(file))) {
+                        new DataInputStream(fs.open(file.getPath()))) {
                     while (true) {
                         int value = dataInputStream.readInt();
                         counts.compute(value, (k, v) -> v == null ? 1 : v + 1);

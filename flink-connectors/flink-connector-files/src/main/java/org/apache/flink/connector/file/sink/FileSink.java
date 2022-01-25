@@ -23,11 +23,19 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.serialization.BulkWriter;
 import org.apache.flink.api.common.serialization.Encoder;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.connector.sink2.CommittableMessage;
 import org.apache.flink.api.connector.sink2.Committer;
 import org.apache.flink.api.connector.sink2.StatefulSink;
 import org.apache.flink.api.connector.sink2.StatefulSink.WithCompatibleState;
 import org.apache.flink.api.connector.sink2.TwoPhaseCommittingSink;
+import org.apache.flink.api.connector.sink2.WithPreCommitTopology;
 import org.apache.flink.connector.file.sink.committer.FileCommitter;
+import org.apache.flink.connector.file.sink.compactor.operator.CompactCoordinatorFactory;
+import org.apache.flink.connector.file.sink.compactor.operator.FileCompactRequest;
+import org.apache.flink.connector.file.sink.compactor.FileCompactStrategy;
+import org.apache.flink.connector.file.sink.compactor.operator.CompactorOperatorFactory;
+import org.apache.flink.connector.file.sink.compactor.FileCompactor;
 import org.apache.flink.connector.file.sink.writer.DefaultFileWriterBucketFactory;
 import org.apache.flink.connector.file.sink.writer.FileWriter;
 import org.apache.flink.connector.file.sink.writer.FileWriterBucketFactory;
@@ -36,6 +44,8 @@ import org.apache.flink.connector.file.sink.writer.FileWriterBucketStateSerializ
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketAssigner;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BulkBucketWriter;
@@ -109,7 +119,8 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class FileSink<IN>
         implements StatefulSink<IN, FileWriterBucketState>,
                 TwoPhaseCommittingSink<IN, FileSinkCommittable>,
-                WithCompatibleState {
+                WithCompatibleState,
+                WithPreCommitTopology<IN, FileSinkCommittable> {
 
     private final BucketsBuilder<IN, ? extends BucketsBuilder<IN, ?>> bucketsBuilder;
 
@@ -177,6 +188,45 @@ public class FileSink<IN>
                 basePath, bulkWriterFactory, new DateTimeBucketAssigner<>());
     }
 
+    public BucketWriter<IN, String> createBucketWriter() throws IOException {
+        return bucketsBuilder.createBucketWriter();
+    }
+
+    public FileCompactor getFileCompactor() {
+        return bucketsBuilder.getCompactor();
+    }
+
+    @Override
+    public DataStream<CommittableMessage<FileSinkCommittable>> addPreCommitTopology(
+            DataStream<CommittableMessage<FileSinkCommittable>> committableStream) {
+        FileCompactStrategy strategy = bucketsBuilder.getCompactStrategy();
+        if (strategy == null) {
+            // not enabled
+            return committableStream;
+        }
+
+        SingleOutputStreamOperator<FileCompactRequest> coordinatorOp =
+                committableStream
+                        .rescale()
+                        .transform(
+                                "Compactor_Coordinator",
+                                TypeInformation.of(FileCompactRequest.class),
+                                new CompactCoordinatorFactory(this, strategy))
+                        .setParallelism(1)
+                        .setMaxParallelism(1);
+
+        TypeInformation<CommittableMessage<FileSinkCommittable>> committableType =
+                committableStream.getType();
+        // TODO how to shuffle here? or broadcast and filter in Compactor?
+        return coordinatorOp
+                .shuffle()
+                .transform(
+                        "Compactor_Operator",
+                        committableType,
+                        new CompactorOperatorFactory(this, strategy))
+                .setParallelism(committableStream.getParallelism());
+    }
+
     /** The base abstract class for the {@link RowFormatBuilder} and {@link BulkFormatBuilder}. */
     @Internal
     private abstract static class BucketsBuilder<IN, T extends BucketsBuilder<IN, T>>
@@ -204,6 +254,15 @@ public class FileSink<IN>
         @Internal
         abstract SimpleVersionedSerializer<FileSinkCommittable> getCommittableSerializer()
                 throws IOException;
+
+        @Internal
+        abstract FileCompactStrategy getCompactStrategy();
+
+        @Internal
+        abstract FileCompactor getCompactor();
+
+        @Internal
+        abstract BucketWriter<IN, String> createBucketWriter() throws IOException;
     }
 
     /** A builder for configuring the sink for row-wise encoding formats. */
@@ -225,6 +284,10 @@ public class FileSink<IN>
         private RollingPolicy<IN, String> rollingPolicy;
 
         private OutputFileConfig outputFileConfig;
+
+        private FileCompactStrategy compactStrategy;
+
+        private FileCompactor fileCompactor;
 
         protected RowFormatBuilder(
                 Path basePath, Encoder<IN> encoder, BucketAssigner<IN, String> bucketAssigner) {
@@ -275,6 +338,22 @@ public class FileSink<IN>
             return self();
         }
 
+        public T enableCompact(final FileCompactStrategy strategy, final FileCompactor compactor) {
+            this.compactStrategy = strategy;
+            // we always commit before compacting, so hide the file written by writer
+            this.outputFileConfig =
+                    OutputFileConfig.builder()
+                            .withPartPrefix("." + outputFileConfig.getPartPrefix())
+                            .withPartSuffix(outputFileConfig.getPartSuffix())
+                            .build();
+            // compacted file is currently build directly by FileSystem, partPrefix does not
+            // affect this
+            // TODO use OutputFileConfig for Compacted?
+            // TODO does this work for S3?
+            this.fileCompactor = compactor;
+            return self();
+        }
+
         /** Creates the actual sink. */
         public FileSink<IN> build() {
             return new FileSink<>(this);
@@ -300,6 +379,16 @@ public class FileSink<IN>
         }
 
         @Override
+        FileCompactStrategy getCompactStrategy() {
+            return compactStrategy;
+        }
+
+        @Override
+        FileCompactor getCompactor() {
+            return fileCompactor;
+        }
+
+        @Override
         SimpleVersionedSerializer<FileWriterBucketState> getWriterStateSerializer()
                 throws IOException {
             BucketWriter<IN, String> bucketWriter = createBucketWriter();
@@ -319,7 +408,7 @@ public class FileSink<IN>
                     bucketWriter.getProperties().getInProgressFileRecoverableSerializer());
         }
 
-        private BucketWriter<IN, String> createBucketWriter() throws IOException {
+        BucketWriter<IN, String> createBucketWriter() throws IOException {
             return new RowWiseBucketWriter<>(
                     FileSystem.get(basePath.toUri()).createRecoverableWriter(), encoder);
         }
@@ -356,6 +445,10 @@ public class FileSink<IN>
         private CheckpointRollingPolicy<IN, String> rollingPolicy;
 
         private OutputFileConfig outputFileConfig;
+
+        private FileCompactStrategy compactStrategy;
+
+        private FileCompactor fileCompactor;
 
         protected BulkFormatBuilder(
                 Path basePath,
@@ -424,6 +517,22 @@ public class FileSink<IN>
                     outputFileConfig);
         }
 
+        public T enableCompact(final FileCompactStrategy strategy, final FileCompactor compactor) {
+            this.compactStrategy = strategy;
+            this.fileCompactor = compactor;
+            // we always commit before compacting, so hide the file written by writer
+            this.outputFileConfig =
+                    OutputFileConfig.builder()
+                            .withPartPrefix("." + outputFileConfig.getPartPrefix())
+                            .withPartSuffix(outputFileConfig.getPartSuffix())
+                            .build();
+            // compacted file is currently build directly by FileSystem, partPrefix does not
+            // affect this
+            // TODO use OutputFileConfig for Compacted?
+            // TODO does this work for S3?
+            return self();
+        }
+
         /** Creates the actual sink. */
         public FileSink<IN> build() {
             return new FileSink<>(this);
@@ -449,6 +558,16 @@ public class FileSink<IN>
         }
 
         @Override
+        FileCompactStrategy getCompactStrategy() {
+            return compactStrategy;
+        }
+
+        @Override
+        FileCompactor getCompactor() {
+            return fileCompactor;
+        }
+
+        @Override
         SimpleVersionedSerializer<FileWriterBucketState> getWriterStateSerializer()
                 throws IOException {
             BucketWriter<IN, String> bucketWriter = createBucketWriter();
@@ -468,7 +587,7 @@ public class FileSink<IN>
                     bucketWriter.getProperties().getInProgressFileRecoverableSerializer());
         }
 
-        private BucketWriter<IN, String> createBucketWriter() throws IOException {
+        BucketWriter<IN, String> createBucketWriter() throws IOException {
             return new BulkBucketWriter<>(
                     FileSystem.get(basePath.toUri()).createRecoverableWriter(), writerFactory);
         }

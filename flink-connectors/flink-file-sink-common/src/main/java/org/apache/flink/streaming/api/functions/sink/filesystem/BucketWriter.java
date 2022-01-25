@@ -39,6 +39,18 @@ public interface BucketWriter<IN, BucketID> {
     InProgressFileWriter<IN, BucketID> openNewInProgressFile(
             final BucketID bucketID, final Path path, final long creationTime) throws IOException;
 
+    default CompactingFileWriter openNewCompactingFile(
+            final CompactingFileWriter.Type type,
+            final BucketID bucketID,
+            final Path path,
+            final long creationTime)
+            throws IOException {
+        if (type == CompactingFileWriter.Type.RECORD_WISE) {
+            return openNewInProgressFile(bucketID, path, creationTime);
+        }
+        throw new UnsupportedOperationException();
+    }
+
     /**
      * Used to resume a {@link InProgressFileWriter} from a {@link
      * InProgressFileWriter.InProgressFileRecoverable}.

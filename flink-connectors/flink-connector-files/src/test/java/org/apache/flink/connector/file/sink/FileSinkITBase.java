@@ -18,9 +18,20 @@
 
 package org.apache.flink.connector.file.sink;
 
+import org.apache.flink.api.common.io.FileInputFormat;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.RestOptions;
+import org.apache.flink.connector.file.sink.compactor.FileCompactStrategy.Builder;
+import org.apache.flink.connector.file.sink.compactor.DecoderBasedReader;
+import org.apache.flink.connector.file.sink.compactor.DecoderBasedReader.Decoder;
+import org.apache.flink.connector.file.sink.compactor.FileCompactor;
+import org.apache.flink.connector.file.sink.compactor.InputFormatBasedReader;
+import org.apache.flink.connector.file.sink.compactor.RecordWiseFileCompactor;
+import org.apache.flink.connector.file.sink.compactor.SimpleConcatFileCompactor;
 import org.apache.flink.connector.file.sink.utils.IntegerFileSinkTestDataUtils;
+import org.apache.flink.connector.file.sink.utils.IntegerFileSinkTestDataUtils.IntEncoder;
+import org.apache.flink.connector.file.sink.utils.IntegerFileSinkTestDataUtils.ModuloBucketAssigner;
+import org.apache.flink.core.fs.FileInputSplit;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.minicluster.MiniCluster;
@@ -34,6 +45,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runners.Parameterized;
 
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
@@ -79,6 +91,7 @@ public abstract class FileSinkITBase extends TestLogger {
             miniCluster.start();
             miniCluster.executeJobBlocking(jobGraph);
         }
+        //        FileStatus[] c4testFiles0 = fs.listStatus(new Path("/c4test/0"));
 
         IntegerFileSinkTestDataUtils.checkIntegerSequenceSinkOutput(
                 path, NUM_RECORDS, NUM_BUCKETS, NUM_SOURCES);
@@ -86,11 +99,50 @@ public abstract class FileSinkITBase extends TestLogger {
 
     protected abstract JobGraph createJobGraph(String path);
 
+    public static class IntInputFormat extends FileInputFormat<Integer> {
+        private DataInputStream intStream;
+
+        @Override
+        public void open(FileInputSplit fileSplit) throws IOException {
+            super.open(fileSplit);
+            this.intStream = new DataInputStream(stream);
+        }
+
+        @Override
+        public boolean reachedEnd() throws IOException {
+            return intStream.available() <= 0;
+        }
+
+        public static final Object lock = new Object();
+
+        @Override
+        public Integer nextRecord(Integer reuse) throws IOException {
+            synchronized (lock) {
+                return intStream.readInt();
+            }
+        }
+
+        @Override
+        public void close() throws IOException {
+            super.close();
+        }
+    }
+
     protected FileSink<Integer> createFileSink(String path) {
-        return FileSink.forRowFormat(new Path(path), new IntegerFileSinkTestDataUtils.IntEncoder())
-                .withBucketAssigner(
-                        new IntegerFileSinkTestDataUtils.ModuloBucketAssigner(NUM_BUCKETS))
+        FileCompactor decoderBasedCompactor =
+                new RecordWiseFileCompactor<>(
+                        new DecoderBasedReader.Factory<>(
+                                (Decoder<Integer>) input -> new DataInputStream(input).readInt()));
+        FileCompactor inputFormatBasedCompactor =
+                new RecordWiseFileCompactor<>(
+                        new InputFormatBasedReader.Factory<>(IntInputFormat::new));
+        FileCompactor simpleConcatCompactor = new SimpleConcatFileCompactor();
+        return FileSink.forRowFormat(new Path(path), new IntEncoder())
+                .withBucketAssigner(new ModuloBucketAssigner(NUM_BUCKETS))
                 .withRollingPolicy(new PartSizeAndCheckpointRollingPolicy(1024))
+                .enableCompact(
+                        Builder.newBuilder().withSizeThreshold(32 * 1024 * 1024).build(),
+                        decoderBasedCompactor)
                 .build();
     }
 

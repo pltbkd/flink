@@ -23,7 +23,10 @@ import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.core.fs.RecoverableWriter;
+import org.apache.flink.streaming.api.functions.sink.filesystem.CompactingFileWriter.Type;
 import org.apache.flink.util.Preconditions;
+
+import java.io.IOException;
 
 /**
  * A factory that creates {@link RowWisePartWriter RowWisePartWriters}.
@@ -47,13 +50,14 @@ public class RowWiseBucketWriter<IN, BucketID>
     public InProgressFileWriter<IN, BucketID> resumeFrom(
             final BucketID bucketId,
             final RecoverableFsDataOutputStream stream,
+            final Path path,
             final RecoverableWriter.ResumeRecoverable resumable,
             final long creationTime) {
 
         Preconditions.checkNotNull(stream);
         Preconditions.checkNotNull(resumable);
 
-        return new RowWisePartWriter<>(bucketId, stream, encoder, creationTime);
+        return new RowWisePartWriter<>(bucketId, path, stream, encoder, creationTime);
     }
 
     @Override
@@ -66,6 +70,13 @@ public class RowWiseBucketWriter<IN, BucketID>
         Preconditions.checkNotNull(stream);
         Preconditions.checkNotNull(path);
 
-        return new RowWisePartWriter<>(bucketId, stream, encoder, creationTime);
+        return new RowWisePartWriter<>(bucketId, path, stream, encoder, creationTime);
+    }
+
+    @Override
+    public CompactingFileWriter openNewCompactingFile(
+            Type type, BucketID bucketID, Path path, long creationTime) throws IOException {
+        // both type is supported, overwrite to avoid UnsupportedOperationException
+        return openNewInProgressFile(bucketID, path, creationTime);
     }
 }
