@@ -50,6 +50,7 @@ public class FileCommitterTest {
         TestCommitRequest<FileSinkCommittable> fileSinkCommittable =
                 new TestCommitRequest<>(
                         new FileSinkCommittable(
+                                "",
                                 new FileSinkTestUtils.TestPendingFileRecoverable()));
         fileCommitter.commit(Collections.singletonList(fileSinkCommittable));
 
@@ -67,6 +68,7 @@ public class FileCommitterTest {
         TestCommitRequest<FileSinkCommittable> fileSinkCommittable =
                 new TestCommitRequest<>(
                         new FileSinkCommittable(
+                                "",
                                 new FileSinkTestUtils.TestInProgressFileRecoverable()));
         fileCommitter.commit(Collections.singletonList(fileSinkCommittable));
 
@@ -83,14 +85,19 @@ public class FileCommitterTest {
         Collection<CommitRequest<FileSinkCommittable>> committables =
                 Stream.of(
                                 new FileSinkCommittable(
+                                        "",
                                         new FileSinkTestUtils.TestPendingFileRecoverable()),
                                 new FileSinkCommittable(
+                                        "",
                                         new FileSinkTestUtils.TestPendingFileRecoverable()),
                                 new FileSinkCommittable(
+                                        "",
                                         new FileSinkTestUtils.TestInProgressFileRecoverable()),
                                 new FileSinkCommittable(
+                                        "",
                                         new FileSinkTestUtils.TestPendingFileRecoverable()),
                                 new FileSinkCommittable(
+                                        "",
                                         new FileSinkTestUtils.TestInProgressFileRecoverable()))
                         .map(TestCommitRequest::new)
                         .collect(Collectors.toList());

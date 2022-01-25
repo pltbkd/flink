@@ -22,6 +22,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.connector.sink2.Committer;
 import org.apache.flink.connector.file.sink.FileSink;
 import org.apache.flink.connector.file.sink.FileSinkCommittable;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
 
 import java.io.IOException;
@@ -59,6 +60,16 @@ public class FileCommitter implements Committer<FileSinkCommittable> {
             if (committable.hasInProgressFileToCleanup()) {
                 bucketWriter.cleanupInProgressFileRecoverable(
                         committable.getInProgressFileToCleanup());
+            }
+
+            if (committable.hasCommittedFileToCleanup()) {
+                Path committedFileToCleanup = committable.getCommittedFileToCleanup();
+                try {
+                    committedFileToCleanup.getFileSystem().delete(committedFileToCleanup, false);
+                } catch (Exception e) {
+                    // try best to cleanup compacting files, skip if failed
+                    e.printStackTrace();
+                }
             }
         }
     }

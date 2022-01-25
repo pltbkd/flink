@@ -36,7 +36,7 @@ public class FileCommittableSerializerTest {
     @Test
     public void testCommittableWithPendingFile() throws IOException {
         FileSinkCommittable committable =
-                new FileSinkCommittable(new FileSinkTestUtils.TestPendingFileRecoverable());
+                new FileSinkCommittable("", new FileSinkTestUtils.TestPendingFileRecoverable());
         FileSinkCommittable deserialized = serializeAndDeserialize(committable);
         assertEquals(committable.getPendingFile(), deserialized.getPendingFile());
         assertEquals(
@@ -47,7 +47,7 @@ public class FileCommittableSerializerTest {
     @Test
     public void testCommittableWithInProgressFileToCleanup() throws IOException {
         FileSinkCommittable committable =
-                new FileSinkCommittable(new FileSinkTestUtils.TestInProgressFileRecoverable());
+                new FileSinkCommittable("", new FileSinkTestUtils.TestInProgressFileRecoverable());
         FileSinkCommittable deserialized = serializeAndDeserialize(committable);
         assertEquals(committable.getPendingFile(), deserialized.getPendingFile());
         assertEquals(
