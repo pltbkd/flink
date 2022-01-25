@@ -24,17 +24,22 @@ import org.apache.flink.core.fs.RecoverableFsDataOutputStream;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
+import java.io.OutputStream;
 
 /**
  * A {@link InProgressFileWriter} for row-wise formats that use an {@link Encoder}. This also
- * implements the {@link PartFileInfo}.
+ * implements the {@link PartFileInfo} and the {@link OutputStreamBasedCompactingFileWriter}.
  */
 @Internal
-final class RowWisePartWriter<IN, BucketID> extends OutputStreamBasedPartFileWriter<IN, BucketID> {
+public final class RowWisePartWriter<IN, BucketID>
+        extends OutputStreamBasedPartFileWriter<IN, BucketID>
+        implements OutputStreamBasedCompactingFileWriter {
 
     private final Encoder<IN> encoder;
 
-    RowWisePartWriter(
+    private CompactingFileWriter.Type writeType = null;
+
+    public RowWisePartWriter(
             final BucketID bucketId,
             final RecoverableFsDataOutputStream currentPartStream,
             final Encoder<IN> encoder,
@@ -45,7 +50,33 @@ final class RowWisePartWriter<IN, BucketID> extends OutputStreamBasedPartFileWri
 
     @Override
     public void write(final IN element, final long currentTime) throws IOException {
+        ensureWriteType(Type.RECORD_WISE);
         encoder.encode(element, currentPartStream);
         markWrite(currentTime);
+    }
+
+    @Override
+    public OutputStream asOutputStream() throws IOException {
+        ensureWriteType(Type.OUTPUT_STREAM);
+        return currentPartStream;
+    }
+
+    private void ensureWriteType(Type type) {
+        // Ensures only one of the write method and the asOutputStream method is used.
+        if (this.writeType == null) {
+            synchronized (this) {
+                if (this.writeType == null) {
+                    this.writeType = type;
+                }
+            }
+        }
+        if (this.writeType != type) {
+            throw new IllegalStateException(
+                    "Writer has already been opened as "
+                            + writeType
+                            + " type, but trying to reopen it as "
+                            + type
+                            + " type.");
+        }
     }
 }
