@@ -26,7 +26,6 @@ import org.apache.flink.streaming.api.functions.sink.filesystem.TestStreamingFil
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.DateTimeBucketAssigner;
 import org.apache.flink.streaming.util.FiniteTestSource;
 import org.apache.flink.test.util.AbstractTestBase;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileStatus;
@@ -58,7 +57,9 @@ public class HadoopPathBasedPartFileWriterTest extends AbstractTestBase {
     public void testPendingFileRecoverableSerializer() throws IOException {
         HadoopPathBasedPendingFileRecoverable recoverable =
                 new HadoopPathBasedPendingFileRecoverable(
-                        new Path("hdfs://fake/path"), new Path("hdfs://fake/path.inprogress.uuid"));
+                        new Path("hdfs://fake/path"),
+                        new Path("hdfs://fake/path.inprogress.uuid"),
+                        -1L);
         HadoopPathBasedPendingFileRecoverableSerializer serializer =
                 new HadoopPathBasedPendingFileRecoverableSerializer();
 

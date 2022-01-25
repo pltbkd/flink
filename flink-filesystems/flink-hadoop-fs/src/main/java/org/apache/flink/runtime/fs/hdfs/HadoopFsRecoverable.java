@@ -18,8 +18,6 @@
 
 package org.apache.flink.runtime.fs.hdfs;
 
-import org.apache.flink.core.fs.CommittableTraits.InProgressPathAware;
-import org.apache.flink.core.fs.CommittableTraits.SizeAware;
 import org.apache.flink.core.fs.RecoverableWriter.CommitRecoverable;
 import org.apache.flink.core.fs.RecoverableWriter.ResumeRecoverable;
 import org.apache.hadoop.fs.Path;
@@ -31,8 +29,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * An implementation of the resume and commit descriptor objects for Hadoop's file system
  * abstraction.
  */
-public class HadoopFsRecoverable
-        implements CommitRecoverable, ResumeRecoverable, InProgressPathAware, SizeAware {
+public class HadoopFsRecoverable implements CommitRecoverable, ResumeRecoverable {
 
     /** The file path for the final result file. */
     private final Path targetFile;
@@ -71,20 +68,5 @@ public class HadoopFsRecoverable
     @Override
     public String toString() {
         return "HadoopFsRecoverable " + tempFile + " @ " + offset + " -> " + targetFile;
-    }
-
-    @Override
-    public org.apache.flink.core.fs.Path getInProgressPath() {
-        return new org.apache.flink.core.fs.Path(tempFile.toUri());
-    }
-
-    @Override
-    public org.apache.flink.core.fs.Path getCommittedPath() {
-        return new org.apache.flink.core.fs.Path(targetFile.toUri());
-    }
-
-    @Override
-    public long getSize() {
-        return offset;
     }
 }

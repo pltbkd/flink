@@ -19,7 +19,6 @@
 package org.apache.flink.formats.hadoop.bulk;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.core.fs.CommittableTraits.InProgressPathAware;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.streaming.api.functions.sink.filesystem.AbstractPartFileWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
@@ -70,7 +69,7 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
         writer.flush();
         writer.finish();
         fileCommitter.preCommit();
-        return new HadoopPathBasedPendingFile(fileCommitter).getRecoverable();
+        return new HadoopPathBasedPendingFile(fileCommitter, getSize()).getRecoverable();
     }
 
     @Override
@@ -86,8 +85,11 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
     static class HadoopPathBasedPendingFile implements BucketWriter.PendingFile {
         private final HadoopFileCommitter fileCommitter;
 
-        public HadoopPathBasedPendingFile(HadoopFileCommitter fileCommitter) {
+        private final long fileSize;
+
+        public HadoopPathBasedPendingFile(HadoopFileCommitter fileCommitter, long fileSize) {
             this.fileCommitter = fileCommitter;
+            this.fileSize = fileSize;
         }
 
         @Override
@@ -102,20 +104,23 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
 
         public PendingFileRecoverable getRecoverable() {
             return new HadoopPathBasedPendingFileRecoverable(
-                    fileCommitter.getTargetFilePath(), fileCommitter.getTempFilePath());
+                    fileCommitter.getTargetFilePath(), fileCommitter.getTempFilePath(), fileSize);
         }
     }
 
     @VisibleForTesting
-    static class HadoopPathBasedPendingFileRecoverable
-            implements PendingFileRecoverable, InProgressPathAware {
+    static class HadoopPathBasedPendingFileRecoverable implements PendingFileRecoverable {
         private final Path targetFilePath;
 
         private final Path tempFilePath;
 
-        public HadoopPathBasedPendingFileRecoverable(Path targetFilePath, Path tempFilePath) {
+        private final long fileSize;
+
+        public HadoopPathBasedPendingFileRecoverable(
+                Path targetFilePath, Path tempFilePath, long fileSize) {
             this.targetFilePath = targetFilePath;
             this.tempFilePath = tempFilePath;
+            this.fileSize = fileSize;
         }
 
         public Path getTargetFilePath() {
@@ -127,13 +132,13 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
         }
 
         @Override
-        public org.apache.flink.core.fs.Path getInProgressPath() {
-            return new org.apache.flink.core.fs.Path(tempFilePath.toUri());
+        public org.apache.flink.core.fs.Path getPath() {
+            return new org.apache.flink.core.fs.Path(targetFilePath.toString());
         }
 
         @Override
-        public org.apache.flink.core.fs.Path getCommittedPath() {
-            return new org.apache.flink.core.fs.Path(targetFilePath.toUri());
+        public long getSize() {
+            return fileSize;
         }
     }
 
@@ -150,7 +155,7 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
 
         @Override
         public int getVersion() {
-            return 1;
+            return 2;
         }
 
         @Override
@@ -177,6 +182,7 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
             bb.put(pathBytes);
             bb.putInt(inProgressBytes.length);
             bb.put(inProgressBytes);
+            bb.putLong(hadoopRecoverable.fileSize);
 
             return targetBytes;
         }
@@ -187,6 +193,8 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
             switch (version) {
                 case 1:
                     return deserializeV1(serialized);
+                case 2:
+                    return deserializeV2(serialized);
                 default:
                     throw new IOException("Unrecognized version or corrupt state: " + version);
             }
@@ -209,7 +217,29 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
             String tempFilePath = new String(tempFilePathBytes, CHARSET);
 
             return new HadoopPathBasedPendingFileRecoverable(
-                    new Path(targetFilePath), new Path(tempFilePath));
+                    new Path(targetFilePath), new Path(tempFilePath), -1L);
+        }
+
+        private HadoopPathBasedPendingFileRecoverable deserializeV2(byte[] serialized)
+                throws IOException {
+            final ByteBuffer bb = ByteBuffer.wrap(serialized).order(ByteOrder.LITTLE_ENDIAN);
+
+            if (bb.getInt() != MAGIC_NUMBER) {
+                throw new IOException("Corrupt data: Unexpected magic number.");
+            }
+
+            byte[] targetFilePathBytes = new byte[bb.getInt()];
+            bb.get(targetFilePathBytes);
+            String targetFilePath = new String(targetFilePathBytes, CHARSET);
+
+            byte[] tempFilePathBytes = new byte[bb.getInt()];
+            bb.get(tempFilePathBytes);
+            String tempFilePath = new String(tempFilePathBytes, CHARSET);
+
+            long fileSize = bb.getLong();
+
+            return new HadoopPathBasedPendingFileRecoverable(
+                    new Path(targetFilePath), new Path(tempFilePath), fileSize);
         }
     }
 
@@ -292,7 +322,8 @@ public class HadoopPathBasedPartFileWriter<IN, BucketID>
                     fileCommitterFactory.recoverForCommit(
                             configuration,
                             hadoopRecoverable.getTargetFilePath(),
-                            hadoopRecoverable.getTempFilePath()));
+                            hadoopRecoverable.getTempFilePath()),
+                    hadoopRecoverable.getSize());
         }
 
         @Override

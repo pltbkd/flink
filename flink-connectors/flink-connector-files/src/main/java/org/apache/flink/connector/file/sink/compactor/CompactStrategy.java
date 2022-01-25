@@ -10,17 +10,13 @@ public class CompactStrategy implements Serializable {
     // TODO not implemented
     private final boolean allowCrossCheckpoint;
 
-    private boolean commitBeforeCompact = false;
-
     public CompactStrategy(
             long sizeThreshold,
             long maxIntervalMs,
-            boolean allowCrossCheckpoint,
-            boolean commitBeforeCompact) {
+            boolean allowCrossCheckpoint) {
         this.sizeThreshold = sizeThreshold;
         this.maxIntervalMs = maxIntervalMs;
         this.allowCrossCheckpoint = allowCrossCheckpoint;
-        this.commitBeforeCompact = commitBeforeCompact;
     }
 
     public long getSizeThreshold() {
@@ -33,10 +29,6 @@ public class CompactStrategy implements Serializable {
 
     public boolean isAllowCrossCheckpoint() {
         return allowCrossCheckpoint;
-    }
-
-    public boolean isCommitBeforeCompact() {
-        return commitBeforeCompact;
     }
 
     public static class Builder {
@@ -64,14 +56,9 @@ public class CompactStrategy implements Serializable {
             return this;
         }
 
-        public CompactStrategy.Builder isCommitBeforeCompact(boolean commitBeforeCompact) {
-            this.commitBeforeCompact = commitBeforeCompact;
-            return this;
-        }
-
         public CompactStrategy build() {
             return new CompactStrategy(
-                    sizeThreshold, maxIntervalMs, allowCrossCheckpoint, commitBeforeCompact);
+                    sizeThreshold, maxIntervalMs, allowCrossCheckpoint);
         }
     }
 }

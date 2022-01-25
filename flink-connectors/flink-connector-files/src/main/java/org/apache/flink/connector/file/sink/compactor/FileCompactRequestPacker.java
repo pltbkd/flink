@@ -55,9 +55,11 @@ public class FileCompactRequestPacker
                 throw new IllegalArgumentException();
             }
 
-            long fileSize = FileCompactorUtil.getSize(committable.getPendingFile());
+            long fileSize = committable.getPendingFile().getSize();
             long bucketSize = packingSize.getOrDefault(bucketId, 0L);
-            if (bucketSize + fileSize > sizeThreshold) {
+            if (bucketSize + fileSize > sizeThreshold || fileSize < 0) {
+                // force trigger a compact if the file size is negative, which means the pending
+                // file is produced by an old writer
                 List<FileSinkCommittable> committableToCompact = new ArrayList<>();
                 packing.get(bucketId)
                         .forEach(

@@ -32,6 +32,8 @@ import org.apache.flink.connector.file.sink.utils.IntegerFileSinkTestDataUtils;
 import org.apache.flink.connector.file.sink.utils.IntegerFileSinkTestDataUtils.IntEncoder;
 import org.apache.flink.connector.file.sink.utils.IntegerFileSinkTestDataUtils.ModuloBucketAssigner;
 import org.apache.flink.core.fs.FileInputSplit;
+import org.apache.flink.core.fs.FileStatus;
+import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.minicluster.MiniCluster;
@@ -52,15 +54,15 @@ import java.util.Collection;
 /** The base class for the File Sink IT Case in different execution mode. */
 public abstract class FileSinkITBase extends TestLogger {
 
-    protected static final int NUM_SOURCES = 4;
+    protected static final int NUM_SOURCES = 1;
 
-    protected static final int NUM_SINKS = 3;
+    protected static final int NUM_SINKS = 1;
 
-    protected static final int NUM_RECORDS = 10000;
+    protected static final int NUM_RECORDS = 10;
 
     protected static final int NUM_BUCKETS = 4;
 
-    protected static final double FAILOVER_RATIO = 0.4;
+    protected static final double FAILOVER_RATIO = 0;
 
     @ClassRule public static final TemporaryFolder TEMPORARY_FOLDER = new TemporaryFolder();
 
@@ -90,6 +92,7 @@ public abstract class FileSinkITBase extends TestLogger {
             miniCluster.start();
             miniCluster.executeJobBlocking(jobGraph);
         }
+//        FileStatus[] c4testFiles0 = fs.listStatus(new Path("/c4test/0"));
 
         IntegerFileSinkTestDataUtils.checkIntegerSequenceSinkOutput(
                 path, NUM_RECORDS, NUM_BUCKETS, NUM_SOURCES);
@@ -139,10 +142,7 @@ public abstract class FileSinkITBase extends TestLogger {
                 .withBucketAssigner(new ModuloBucketAssigner(NUM_BUCKETS))
                 .withRollingPolicy(new PartSizeAndCheckpointRollingPolicy(1024))
                 .enableCompact(
-                        Builder.newBuilder()
-                                .withSizeThreshold(32 * 1024 * 1024)
-                                .isCommitBeforeCompact(true)
-                                .build(),
+                        Builder.newBuilder().withSizeThreshold(32 * 1024 * 1024).build(),
                         decoderBasedCompactor)
                 .build();
     }

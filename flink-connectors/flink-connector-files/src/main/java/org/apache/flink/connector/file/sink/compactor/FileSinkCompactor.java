@@ -9,13 +9,11 @@ import org.apache.flink.streaming.api.functions.sink.filesystem.InProgressFileWr
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class FileSinkCompactor<InputT>
         implements Compactor<FileSinkCommittable, FileCompactRequest> {
     private final FileCompactor fileCompactor;
     private final BucketWriter<InputT, String> bucketWriter;
-    private boolean commitBeforeCompact = true;
 
     public FileSinkCompactor(
             FileCompactor fileCompactor, BucketWriter<InputT, String> bucketWriter) {
@@ -50,6 +48,10 @@ public class FileSinkCompactor<InputT>
         FileSinkCommittable compacted =
                 new FileSinkCommittable(request.getBucketId(), compactedPendingFile);
         results.add(0, compacted);
+        for (Path f : compactingFiles) {
+            // cleanup compacted files
+            results.add(new FileSinkCommittable(request.getBucketId(), f));
+        }
 
         // TODO add compacted pending files to remove
         return results;
@@ -61,28 +63,20 @@ public class FileSinkCompactor<InputT>
             List<FileSinkCommittable> compactingCommittables,
             List<FileSinkCommittable> results)
             throws IOException {
-        if (!commitBeforeCompact) {
-            // return in progress path of these committables
-            return compactingCommittables.stream()
-                    .map(c -> FileCompactorUtil.getInProgressPath(c.getPendingFile()))
-                    .collect(Collectors.toList());
-        }
-
         List<Path> compactingFiles = new ArrayList<>();
 
         for (FileSinkCommittable committable : compactingCommittables) {
             // TODO directly check if the committed path is a visible one?
-            if (!FileCompactorUtil.getCommittedPath(committable.getPendingFile())
-                    .getName()
-                    .startsWith(".")) {
-                // the file will be visible once committed, so it can not be compacted
+            if (committable.getPendingFile().getPath() == null
+                    || !committable.getPendingFile().getPath().getName().startsWith(".")) {
+                // the file may be written with writer of elder version, or
+                // the file will be visible once committed, so it can not be compacted.
                 // pass through, add to results, do not add to compacting files
                 results.add(committable);
             } else {
-                // commit the pending file and compact with the committed path
+                // commit the pending file and compact the committed file
                 bucketWriter.recoverPendingFile(committable.getPendingFile()).commitAfterRecovery();
-                compactingFiles.add(
-                        FileCompactorUtil.getCommittedPath(committable.getPendingFile()));
+                compactingFiles.add(committable.getPendingFile().getPath());
             }
         }
         return compactingFiles;
@@ -90,7 +84,7 @@ public class FileSinkCompactor<InputT>
 
     private PendingFileRecoverable doCompact(FileCompactRequest request, List<Path> compactingFiles)
             throws Exception {
-        Path targetPath = FileCompactorUtil.createCompactedFile(compactingFiles.get(0));
+        Path targetPath = FileCompactorUtil.assembleCompactedFilePath(compactingFiles.get(0));
         CompactingFileWriter compactingFileWriter =
                 bucketWriter.openNewCompactingFile(
                         fileCompactor.getWriterType(),

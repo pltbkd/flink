@@ -19,6 +19,7 @@
 package org.apache.flink.connector.file.sink;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.SimpleVersionedSerialization;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.core.memory.DataInputDeserializer;
@@ -55,14 +56,14 @@ public class FileSinkCommittableSerializer
 
     @Override
     public int getVersion() {
-        return 1;
+        return 2;
     }
 
     @Override
     public byte[] serialize(FileSinkCommittable committable) throws IOException {
         DataOutputSerializer out = new DataOutputSerializer(256);
         out.writeInt(MAGIC_NUMBER);
-        serializeV1(committable, out);
+        serializeV2(committable, out);
         return out.getCopyOfBuffer();
     }
 
@@ -74,6 +75,9 @@ public class FileSinkCommittableSerializer
             case 1:
                 validateMagicNumber(in);
                 return deserializeV1(in);
+            case 2:
+                validateMagicNumber(in);
+                return deserializeV2(in);
             default:
                 throw new IOException("Unrecognized version or corrupt state: " + version);
         }
@@ -101,6 +105,35 @@ public class FileSinkCommittableSerializer
         }
     }
 
+    private void serializeV2(FileSinkCommittable committable, DataOutputView dataOutputView)
+            throws IOException {
+        dataOutputView.writeUTF(committable.getBucketId());
+        if (committable.hasPendingFile()) {
+            dataOutputView.writeBoolean(true);
+            SimpleVersionedSerialization.writeVersionAndSerialize(
+                    pendingFileSerializer, committable.getPendingFile(), dataOutputView);
+        } else {
+            dataOutputView.writeBoolean(false);
+        }
+
+        if (committable.hasInProgressFileToCleanup()) {
+            dataOutputView.writeBoolean(true);
+            SimpleVersionedSerialization.writeVersionAndSerialize(
+                    inProgressFileSerializer,
+                    committable.getInProgressFileToCleanup(),
+                    dataOutputView);
+        } else {
+            dataOutputView.writeBoolean(false);
+        }
+
+        if (committable.hasCommittedFileToCleanup()) {
+            dataOutputView.writeBoolean(true);
+            dataOutputView.writeUTF(committable.getCommittedFileToCleanup().toString());
+        } else {
+            dataOutputView.writeBoolean(false);
+        }
+    }
+
     private FileSinkCommittable deserializeV1(DataInputView dataInputView) throws IOException {
         String bucketId = dataInputView.readUTF();
         InProgressFileWriter.PendingFileRecoverable pendingFile = null;
@@ -117,7 +150,32 @@ public class FileSinkCommittableSerializer
                             inProgressFileSerializer, dataInputView);
         }
 
-        return new FileSinkCommittable(bucketId, pendingFile, inProgressFileToCleanup);
+        return new FileSinkCommittable(bucketId, pendingFile, inProgressFileToCleanup, null);
+    }
+
+    private FileSinkCommittable deserializeV2(DataInputView dataInputView) throws IOException {
+        String bucketId = dataInputView.readUTF();
+        InProgressFileWriter.PendingFileRecoverable pendingFile = null;
+        if (dataInputView.readBoolean()) {
+            pendingFile =
+                    SimpleVersionedSerialization.readVersionAndDeSerialize(
+                            pendingFileSerializer, dataInputView);
+        }
+
+        InProgressFileWriter.InProgressFileRecoverable inProgressFileToCleanup = null;
+        if (dataInputView.readBoolean()) {
+            inProgressFileToCleanup =
+                    SimpleVersionedSerialization.readVersionAndDeSerialize(
+                            inProgressFileSerializer, dataInputView);
+        }
+
+        Path committedFileToCleanup = null;
+        if (dataInputView.readBoolean()) {
+            committedFileToCleanup = new Path(dataInputView.readUTF());
+        }
+
+        return new FileSinkCommittable(
+                bucketId, pendingFile, inProgressFileToCleanup, committedFileToCleanup);
     }
 
     private static void validateMagicNumber(DataInputView in) throws IOException {

@@ -50,13 +50,14 @@ public class RowWiseBucketWriter<IN, BucketID>
     public InProgressFileWriter<IN, BucketID> resumeFrom(
             final BucketID bucketId,
             final RecoverableFsDataOutputStream stream,
+            final Path path,
             final RecoverableWriter.ResumeRecoverable resumable,
             final long creationTime) {
 
         Preconditions.checkNotNull(stream);
         Preconditions.checkNotNull(resumable);
 
-        return new RowWisePartWriter<>(bucketId, stream, encoder, creationTime);
+        return new RowWisePartWriter<>(bucketId, path, stream, encoder, creationTime);
     }
 
     @Override
@@ -69,7 +70,7 @@ public class RowWiseBucketWriter<IN, BucketID>
         Preconditions.checkNotNull(stream);
         Preconditions.checkNotNull(path);
 
-        return new RowWisePartWriter<>(bucketId, stream, encoder, creationTime);
+        return new RowWisePartWriter<>(bucketId, path, stream, encoder, creationTime);
     }
 
     @Override

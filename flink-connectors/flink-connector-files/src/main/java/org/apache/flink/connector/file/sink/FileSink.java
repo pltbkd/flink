@@ -336,18 +336,16 @@ public class FileSink<IN>
 
         public T enableCompact(final CompactStrategy strategy, FileCompactor compactor) {
             this.compactStrategy = strategy;
-            if (strategy.isCommitBeforeCompact()) {
-                // we should hide the committed file before compacting
-                outputFileConfig =
-                        OutputFileConfig.builder()
-                                .withPartPrefix("." + outputFileConfig.getPartPrefix())
-                                .withPartSuffix(outputFileConfig.getPartSuffix())
-                                .build();
-                // compacted file is currently build directly by FileSystem, partPrefix does not
-                // affect this
-                // TODO use OutputFileConfig for Compacted?
-                // TODO does this work for S3?
-            }
+            // we always commit before compacting, so hide the file written by writer
+            this.outputFileConfig =
+                    OutputFileConfig.builder()
+                            .withPartPrefix("." + outputFileConfig.getPartPrefix())
+                            .withPartSuffix(outputFileConfig.getPartSuffix())
+                            .build();
+            // compacted file is currently build directly by FileSystem, partPrefix does not
+            // affect this
+            // TODO use OutputFileConfig for Compacted?
+            // TODO does this work for S3?
             this.fileCompactor = compactor;
             return self();
         }
@@ -446,7 +444,7 @@ public class FileSink<IN>
 
         private CompactStrategy compactStrategy;
 
-        private FileCompactor.Factory fileCompactorFactory;
+        private FileCompactor fileCompactor;
 
         protected BulkFormatBuilder(
                 Path basePath,
@@ -516,21 +514,19 @@ public class FileSink<IN>
         }
 
         public T enableCompact(
-                final CompactStrategy strategy, FileCompactor.Factory compactorFactory) {
+                final CompactStrategy strategy, FileCompactor compactor) {
             this.compactStrategy = strategy;
-            this.fileCompactorFactory = compactorFactory;
-            if (strategy.isCommitBeforeCompact()) {
-                // we should hide the committed file before compacting
-                outputFileConfig =
-                        OutputFileConfig.builder()
-                                .withPartPrefix("." + outputFileConfig.getPartPrefix())
-                                .withPartSuffix(outputFileConfig.getPartSuffix())
-                                .build();
+            this.fileCompactor = compactor;
+            // we always commit before compacting, so hide the file written by writer
+            this.outputFileConfig =
+                    OutputFileConfig.builder()
+                            .withPartPrefix("." + outputFileConfig.getPartPrefix())
+                            .withPartSuffix(outputFileConfig.getPartSuffix())
+                            .build();
                 // compacted file is currently build directly by FileSystem, partPrefix does not
                 // affect this
                 // TODO use OutputFileConfig for Compacted?
                 // TODO does this work for S3?
-            }
             return self();
         }
 
@@ -565,7 +561,7 @@ public class FileSink<IN>
 
         @Override
         Compactor<FileSinkCommittable, FileCompactRequest> createCompactor() throws IOException {
-            return new FileSinkCompactor<>(fileCompactorFactory.create(), createBucketWriter());
+            return new FileSinkCompactor<>(fileCompactor, createBucketWriter());
         }
 
         @Override

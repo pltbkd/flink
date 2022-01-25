@@ -42,24 +42,29 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
         extends AbstractPartFileWriter<IN, BucketID> {
 
     final RecoverableFsDataOutputStream currentPartStream;
+    final Path pendingFilePath;
 
     OutputStreamBasedPartFileWriter(
             final BucketID bucketID,
+            final Path pendingFilePath,
             final RecoverableFsDataOutputStream recoverableFsDataOutputStream,
             final long createTime) {
         super(bucketID, createTime);
+        this.pendingFilePath = pendingFilePath;
         this.currentPartStream = recoverableFsDataOutputStream;
     }
 
     @Override
     public InProgressFileRecoverable persist() throws IOException {
-        return new OutputStreamBasedInProgressFileRecoverable(currentPartStream.persist());
+        return new OutputStreamBasedInProgressFileRecoverable(
+                currentPartStream.persist(), pendingFilePath);
     }
 
     @Override
     public PendingFileRecoverable closeForCommit() throws IOException {
+        long size = currentPartStream.getPos();
         return new OutputStreamBasedPendingFileRecoverable(
-                currentPartStream.closeForCommit().getRecoverable());
+                currentPartStream.closeForCommit().getRecoverable(), pendingFilePath, size);
     }
 
     @Override
@@ -103,6 +108,7 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
                     bucketID,
                     recoverableWriter.recover(
                             outputStreamBasedInProgressRecoverable.getResumeRecoverable()),
+                    inProgressFileRecoverable.getPath(),
                     outputStreamBasedInProgressRecoverable.getResumeRecoverable(),
                     creationTime);
         }
@@ -158,6 +164,7 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
         public abstract InProgressFileWriter<IN, BucketID> resumeFrom(
                 final BucketID bucketId,
                 final RecoverableFsDataOutputStream stream,
+                final Path path,
                 final RecoverableWriter.ResumeRecoverable resumable,
                 final long creationTime)
                 throws IOException;
@@ -170,14 +177,36 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
             implements PendingFileRecoverable {
 
         private final RecoverableWriter.CommitRecoverable commitRecoverable;
+        private final Path pendingFilePath;
+        private final long fileSize;
 
+        // Only used for old state compatibility
         public OutputStreamBasedPendingFileRecoverable(
                 final RecoverableWriter.CommitRecoverable commitRecoverable) {
+            this(commitRecoverable, null, -1L);
+        }
+
+        public OutputStreamBasedPendingFileRecoverable(
+                final RecoverableWriter.CommitRecoverable commitRecoverable,
+                final Path pendingFilePath,
+                final long fileSize) {
             this.commitRecoverable = commitRecoverable;
+            this.pendingFilePath = pendingFilePath;
+            this.fileSize = fileSize;
         }
 
         public RecoverableWriter.CommitRecoverable getCommitRecoverable() {
             return commitRecoverable;
+        }
+
+        @Override
+        public Path getPath() {
+            return pendingFilePath;
+        }
+
+        @Override
+        public long getSize() {
+            return fileSize;
         }
     }
 
@@ -189,14 +218,33 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
             implements InProgressFileRecoverable {
 
         private final RecoverableWriter.ResumeRecoverable resumeRecoverable;
+        private final Path pendingFilePath;
 
+        // Only used for old state compatibility
         public OutputStreamBasedInProgressFileRecoverable(
                 final RecoverableWriter.ResumeRecoverable resumeRecoverable) {
+            this(resumeRecoverable, null);
+        }
+
+        public OutputStreamBasedInProgressFileRecoverable(
+                final RecoverableWriter.ResumeRecoverable resumeRecoverable,
+                final Path pendingFilePath) {
             this.resumeRecoverable = resumeRecoverable;
+            this.pendingFilePath = pendingFilePath;
         }
 
         public RecoverableWriter.ResumeRecoverable getResumeRecoverable() {
             return resumeRecoverable;
+        }
+
+        @Override
+        public Path getPath() {
+            return pendingFilePath;
+        }
+
+        @Override
+        public long getSize() {
+            return -1L;
         }
     }
 
@@ -235,7 +283,7 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
 
         @Override
         public int getVersion() {
-            return 1;
+            return 2;
         }
 
         @Override
@@ -245,7 +293,7 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
                     (OutputStreamBasedInProgressFileRecoverable) inProgressRecoverable;
             DataOutputSerializer dataOutputSerializer = new DataOutputSerializer(256);
             dataOutputSerializer.writeInt(MAGIC_NUMBER);
-            serializeV1(outputStreamBasedInProgressRecoverable, dataOutputSerializer);
+            serializeV2(outputStreamBasedInProgressRecoverable, dataOutputSerializer);
             return dataOutputSerializer.getCopyOfBuffer();
         }
 
@@ -257,6 +305,10 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
                     DataInputView dataInputView = new DataInputDeserializer(serialized);
                     validateMagicNumber(dataInputView);
                     return deserializeV1(dataInputView);
+                case 2:
+                    dataInputView = new DataInputDeserializer(serialized);
+                    validateMagicNumber(dataInputView);
+                    return deserializeV2(dataInputView);
                 default:
                     throw new IOException("Unrecognized version or corrupt state: " + version);
             }
@@ -278,11 +330,32 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
                     dataOutputView);
         }
 
+        private void serializeV2(
+                final OutputStreamBasedInProgressFileRecoverable
+                        outputStreamBasedInProgressRecoverable,
+                final DataOutputView dataOutputView)
+                throws IOException {
+            dataOutputView.writeUTF(outputStreamBasedInProgressRecoverable.getPath().toString());
+            SimpleVersionedSerialization.writeVersionAndSerialize(
+                    resumeSerializer,
+                    outputStreamBasedInProgressRecoverable.getResumeRecoverable(),
+                    dataOutputView);
+        }
+
         private OutputStreamBasedInProgressFileRecoverable deserializeV1(
                 final DataInputView dataInputView) throws IOException {
             return new OutputStreamBasedInProgressFileRecoverable(
                     SimpleVersionedSerialization.readVersionAndDeSerialize(
                             resumeSerializer, dataInputView));
+        }
+
+        private OutputStreamBasedInProgressFileRecoverable deserializeV2(
+                final DataInputView dataInputView) throws IOException {
+            Path path = new Path(dataInputView.readUTF());
+            return new OutputStreamBasedInProgressFileRecoverable(
+                    SimpleVersionedSerialization.readVersionAndDeSerialize(
+                            resumeSerializer, dataInputView),
+                    path);
         }
 
         private static void validateMagicNumber(final DataInputView dataInputView)
@@ -312,7 +385,7 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
 
         @Override
         public int getVersion() {
-            return 1;
+            return 2;
         }
 
         @Override
@@ -321,7 +394,7 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
                     (OutputStreamBasedPendingFileRecoverable) pendingFileRecoverable;
             DataOutputSerializer dataOutputSerializer = new DataOutputSerializer(256);
             dataOutputSerializer.writeInt(MAGIC_NUMBER);
-            serializeV1(outputStreamBasedPendingFileRecoverable, dataOutputSerializer);
+            serializeV2(outputStreamBasedPendingFileRecoverable, dataOutputSerializer);
             return dataOutputSerializer.getCopyOfBuffer();
         }
 
@@ -333,7 +406,10 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
                     DataInputDeserializer in = new DataInputDeserializer(serialized);
                     validateMagicNumber(in);
                     return deserializeV1(in);
-
+                case 2:
+                    in = new DataInputDeserializer(serialized);
+                    validateMagicNumber(in);
+                    return deserializeV2(in);
                 default:
                     throw new IOException("Unrecognized version or corrupt state: " + version);
             }
@@ -355,11 +431,35 @@ public abstract class OutputStreamBasedPartFileWriter<IN, BucketID>
                     dataOutputView);
         }
 
+        private void serializeV2(
+                final OutputStreamBasedPendingFileRecoverable
+                        outputStreamBasedPendingFileRecoverable,
+                final DataOutputView dataOutputView)
+                throws IOException {
+            dataOutputView.writeUTF(outputStreamBasedPendingFileRecoverable.getPath().toString());
+            dataOutputView.writeLong(outputStreamBasedPendingFileRecoverable.getSize());
+            SimpleVersionedSerialization.writeVersionAndSerialize(
+                    commitSerializer,
+                    outputStreamBasedPendingFileRecoverable.getCommitRecoverable(),
+                    dataOutputView);
+        }
+
         private OutputStreamBasedPendingFileRecoverable deserializeV1(
                 final DataInputView dataInputView) throws IOException {
             return new OutputStreamBasedPendingFileRecoverable(
                     SimpleVersionedSerialization.readVersionAndDeSerialize(
                             commitSerializer, dataInputView));
+        }
+
+        private OutputStreamBasedPendingFileRecoverable deserializeV2(
+                final DataInputView dataInputView) throws IOException {
+            Path path = new Path(dataInputView.readUTF());
+            long size = dataInputView.readLong();
+            return new OutputStreamBasedPendingFileRecoverable(
+                    SimpleVersionedSerialization.readVersionAndDeSerialize(
+                            commitSerializer, dataInputView),
+                    path,
+                    size);
         }
 
         private static void validateMagicNumber(final DataInputView dataInputView)
