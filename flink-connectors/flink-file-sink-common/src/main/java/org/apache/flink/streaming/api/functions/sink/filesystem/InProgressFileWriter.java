@@ -19,6 +19,7 @@
 package org.apache.flink.streaming.api.functions.sink.filesystem;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.core.fs.Path;
 
 import java.io.IOException;
 
@@ -63,5 +64,9 @@ public interface InProgressFileWriter<IN, BucketID>
     interface InProgressFileRecoverable extends PendingFileRecoverable {}
 
     /** The handle can be used to recover pending file. */
-    interface PendingFileRecoverable {}
+    interface PendingFileRecoverable {
+        Path getPath();
+
+        long getSize();
+    }
 }
