@@ -31,17 +31,15 @@ public class FileCompactStrategy implements Serializable {
 
     // Compaction triggering strategies.
     private final long sizeThreshold;
-    private final long maxIntervalMs;
-    private final boolean crossCheckpoints;
+    private final boolean compactOnCheckpoint;
 
     // Compaction executing strategies.
     private final int compactThread;
 
     private FileCompactStrategy(
-            long sizeThreshold, long maxIntervalMs, boolean crossCheckpoints, int compactThread) {
+            long sizeThreshold, boolean compactOnCheckpoint, int compactThread) {
         this.sizeThreshold = sizeThreshold;
-        this.maxIntervalMs = maxIntervalMs;
-        this.crossCheckpoints = crossCheckpoints;
+        this.compactOnCheckpoint = compactOnCheckpoint;
         this.compactThread = compactThread;
     }
 
@@ -49,12 +47,8 @@ public class FileCompactStrategy implements Serializable {
         return sizeThreshold;
     }
 
-    public long getMaxIntervalMs() {
-        return maxIntervalMs;
-    }
-
-    public boolean isCrossCheckpoints() {
-        return crossCheckpoints;
+    public boolean isCompactOnCheckpoint() {
+        return compactOnCheckpoint;
     }
 
     public int getCompactThread() {
@@ -64,8 +58,7 @@ public class FileCompactStrategy implements Serializable {
     /** Builder for {@link FileCompactStrategy}. */
     public static class Builder {
         private long sizeThreshold = -1;
-        private long maxIntervalMs = -1;
-        private boolean crossCheckpoints = true;
+        private boolean compactOnCheckpoint = false;
         private int compactThread = 1;
 
         public static FileCompactStrategy.Builder newBuilder() {
@@ -82,17 +75,11 @@ public class FileCompactStrategy implements Serializable {
         }
 
         /**
-         * Optional, max interval since the last compaction triggering. -1 by default, indicating
-         * the interval is unlimited. The triggering will actually happen at the next checkpoint.
+         * Optional, whether to trigger compacting at the beginning of a checkpoint, false by
+         * default.
          */
-        public FileCompactStrategy.Builder withMaxIntervalMs(long maxIntervalMs) {
-            this.maxIntervalMs = maxIntervalMs;
-            return this;
-        }
-
-        /** Optional, whether to compact files of different checkpoints, true by default. */
-        public FileCompactStrategy.Builder setCrossCheckpoints(boolean crossCheckpoints) {
-            this.crossCheckpoints = crossCheckpoints;
+        public FileCompactStrategy.Builder setCompactOnCheckpoint(boolean compactOnCheckpoint) {
+            this.compactOnCheckpoint = compactOnCheckpoint;
             return this;
         }
 
@@ -105,14 +92,13 @@ public class FileCompactStrategy implements Serializable {
 
         public FileCompactStrategy build() {
             validate();
-            return new FileCompactStrategy(
-                    sizeThreshold, maxIntervalMs, crossCheckpoints, compactThread);
+            return new FileCompactStrategy(sizeThreshold, compactOnCheckpoint, compactThread);
         }
 
         private void validate() {
-            if (sizeThreshold < 0 && maxIntervalMs < 0) {
+            if (sizeThreshold < 0 && !compactOnCheckpoint) {
                 throw new IllegalArgumentException(
-                        "At least one of the sizeThreshold and the maxIntervalMs should be configured.");
+                        "At least one trigger condition should be configured.");
             }
         }
     }
