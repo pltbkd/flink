@@ -339,6 +339,18 @@ public class FileSink<IN>
             return self();
         }
 
+        public T enableCompact(final FileCompactStrategy strategy, final FileCompactor compactor) {
+            this.compactStrategy = strategy;
+            // we always commit before compacting, so hide the file written by writer
+            this.outputFileConfig =
+                    OutputFileConfig.builder()
+                            .withPartPrefix("." + outputFileConfig.getPartPrefix())
+                            .withPartSuffix(outputFileConfig.getPartSuffix())
+                            .build();
+            this.fileCompactor = compactor;
+            return self();
+        }
+
         /** Creates the actual sink. */
         public FileSink<IN> build() {
             return new FileSink<>(this);
@@ -500,6 +512,18 @@ public class FileSink<IN>
                     rollingPolicy,
                     bucketFactory,
                     outputFileConfig);
+        }
+
+        public T enableCompact(final FileCompactStrategy strategy, final FileCompactor compactor) {
+            this.compactStrategy = strategy;
+            // we always commit before compacting, so hide the file written by writer
+            this.outputFileConfig =
+                    OutputFileConfig.builder()
+                            .withPartPrefix("." + outputFileConfig.getPartPrefix())
+                            .withPartSuffix(outputFileConfig.getPartSuffix())
+                            .build();
+            this.fileCompactor = compactor;
+            return self();
         }
 
         /** Creates the actual sink. */
