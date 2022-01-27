@@ -112,6 +112,11 @@ under the License.
 			<type>test-jar</type>
 			<scope>test</scope>
 		</dependency>
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-common</artifactId>
+            <scope>test</scope>
+        </dependency>
 
 		<!-- ArchUit test dependencies -->
 
