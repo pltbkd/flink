@@ -23,6 +23,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.serialization.BulkWriter;
 import org.apache.flink.api.common.serialization.Encoder;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.sink2.Committer;
 import org.apache.flink.api.connector.sink2.StatefulSink;
 import org.apache.flink.api.connector.sink2.StatefulSink.WithCompatibleState;
@@ -30,6 +31,10 @@ import org.apache.flink.api.connector.sink2.TwoPhaseCommittingSink;
 import org.apache.flink.connector.file.sink.committer.FileCommitter;
 import org.apache.flink.connector.file.sink.compactor.FileCompactStrategy;
 import org.apache.flink.connector.file.sink.compactor.FileCompactor;
+import org.apache.flink.connector.file.sink.compactor.operator.CompactCoordinatorFactory;
+import org.apache.flink.connector.file.sink.compactor.operator.CompactorOperatorFactory;
+import org.apache.flink.connector.file.sink.compactor.operator.CompactorRequest;
+import org.apache.flink.connector.file.sink.compactor.operator.CompactorRequestTypeInfo;
 import org.apache.flink.connector.file.sink.writer.DefaultFileWriterBucketFactory;
 import org.apache.flink.connector.file.sink.writer.FileWriter;
 import org.apache.flink.connector.file.sink.writer.FileWriterBucketFactory;
@@ -38,6 +43,10 @@ import org.apache.flink.connector.file.sink.writer.FileWriterBucketStateSerializ
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.streaming.api.connector.sink2.CommittableMessage;
+import org.apache.flink.streaming.api.connector.sink2.WithPreCommitTopology;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketAssigner;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BucketWriter;
 import org.apache.flink.streaming.api.functions.sink.filesystem.BulkBucketWriter;
@@ -111,7 +120,8 @@ import static org.apache.flink.util.Preconditions.checkState;
 public class FileSink<IN>
         implements StatefulSink<IN, FileWriterBucketState>,
                 TwoPhaseCommittingSink<IN, FileSinkCommittable>,
-                WithCompatibleState {
+                WithCompatibleState,
+                WithPreCommitTopology<IN, FileSinkCommittable> {
 
     private final BucketsBuilder<IN, ? extends BucketsBuilder<IN, ?>> bucketsBuilder;
 
@@ -185,6 +195,37 @@ public class FileSink<IN>
 
     public FileCompactor getFileCompactor() {
         return bucketsBuilder.getFileCompactor();
+    }
+
+    @Override
+    public DataStream<CommittableMessage<FileSinkCommittable>> addPreCommitTopology(
+            DataStream<CommittableMessage<FileSinkCommittable>> committableStream) {
+        FileCompactStrategy strategy = bucketsBuilder.getCompactStrategy();
+        if (strategy == null) {
+            // not enabled
+            return committableStream;
+        }
+
+        SingleOutputStreamOperator<CompactorRequest> coordinatorOp =
+                committableStream
+                        .rescale()
+                        .transform(
+                                "CompactorCoordinator",
+                                new CompactorRequestTypeInfo(
+                                        bucketsBuilder::getCommittableSerializer),
+                                new CompactCoordinatorFactory(this, strategy))
+                        .setParallelism(1)
+                        .setMaxParallelism(1);
+
+        TypeInformation<CommittableMessage<FileSinkCommittable>> committableType =
+                committableStream.getType();
+        return coordinatorOp
+                .shuffle()
+                .transform(
+                        "CompactorOperator",
+                        committableType,
+                        new CompactorOperatorFactory(this, strategy))
+                .setParallelism(committableStream.getParallelism());
     }
 
     /** The base abstract class for the {@link RowFormatBuilder} and {@link BulkFormatBuilder}. */
