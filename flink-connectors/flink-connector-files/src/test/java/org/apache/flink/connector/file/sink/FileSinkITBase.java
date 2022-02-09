@@ -94,7 +94,7 @@ public abstract class FileSinkITBase extends TestLogger {
                 .build();
     }
 
-    private static class PartSizeAndCheckpointRollingPolicy
+    protected static class PartSizeAndCheckpointRollingPolicy
             extends CheckpointRollingPolicy<Integer, String> {
 
         private final long maxPartSize;
