@@ -215,15 +215,6 @@ public class SinkTransformationTranslator<Input, Output>
             List<Transformation<?>> expandedTransformations =
                     transformations.subList(numTransformsBefore, transformations.size());
             for (Transformation<?> subTransformation : expandedTransformations) {
-                // Skip overwriting the parallelism for the global committer
-                if (subTransformation.getName() == null
-                        || !subTransformation
-                                .getName()
-                                .equals(
-                                        StandardSinkTopologies
-                                                .GLOBAL_COMMITTER_TRANSFORMATION_NAME)) {
-                    subTransformation.setParallelism(transformation.getParallelism());
-                }
                 concatUid(
                         subTransformation,
                         Transformation::getUid,
