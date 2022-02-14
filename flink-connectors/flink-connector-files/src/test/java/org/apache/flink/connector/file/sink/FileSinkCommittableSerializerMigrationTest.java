@@ -52,7 +52,7 @@ import java.util.Collections;
 @RunWith(Parameterized.class)
 public class FileSinkCommittableSerializerMigrationTest {
 
-    private static final int CURRENT_VERSION = 1;
+    private static final int CURRENT_VERSION = 2;
 
     @Parameterized.Parameters(name = "Previous Version = {0}")
     public static Collection<Integer> previousVersions() {
@@ -61,8 +61,13 @@ public class FileSinkCommittableSerializerMigrationTest {
 
     @Parameterized.Parameter public Integer previousVersion;
 
+    private static final String BUCKET_ID = "test-bucket";
     private static final String IN_PROGRESS_CONTENT = "writing";
     private static final String PENDING_CONTENT = "wrote";
+    private static final String BUCKET_NOT_AVAILABLE = "";
+
+    private static final Path TARGET_PATH = new Path("file://target");
+    private static final long FILE_SIZE = 7L;
 
     private static final java.nio.file.Path BASE_PATH =
             Paths.get("src/test/resources/").resolve("committable-serializer-migration");
@@ -88,8 +93,8 @@ public class FileSinkCommittableSerializerMigrationTest {
         ResumeRecoverable resumeRecoverable = outputStream.persist();
 
         OutputStreamBasedInProgressFileRecoverable recoverable =
-                new OutputStreamBasedInProgressFileRecoverable(resumeRecoverable);
-        FileSinkCommittable committable = new FileSinkCommittable(recoverable);
+                new OutputStreamBasedInProgressFileRecoverable(resumeRecoverable, TARGET_PATH);
+        FileSinkCommittable committable = new FileSinkCommittable(BUCKET_ID, recoverable);
 
         byte[] bytes = serializer.serialize(committable);
         Files.write(path.resolve("committable"), bytes);
@@ -112,6 +117,12 @@ public class FileSinkCommittableSerializerMigrationTest {
 
         Assert.assertTrue(committable.hasInProgressFileToCleanup());
         Assert.assertFalse(committable.hasPendingFile());
+        Assert.assertFalse(committable.hasCompactedFileToCleanup());
+        if (previousVersion == 1) {
+            Assert.assertEquals(BUCKET_NOT_AVAILABLE, committable.getBucketId());
+        } else {
+            Assert.assertEquals(BUCKET_ID, committable.getBucketId());
+        }
     }
 
     @Test
@@ -133,8 +144,9 @@ public class FileSinkCommittableSerializerMigrationTest {
         CommitRecoverable commitRecoverable = outputStream.closeForCommit().getRecoverable();
 
         OutputStreamBasedPendingFileRecoverable recoverable =
-                new OutputStreamBasedPendingFileRecoverable(commitRecoverable);
-        FileSinkCommittable committable = new FileSinkCommittable(recoverable);
+                new OutputStreamBasedPendingFileRecoverable(
+                        commitRecoverable, TARGET_PATH, FILE_SIZE);
+        FileSinkCommittable committable = new FileSinkCommittable(BUCKET_ID, recoverable);
 
         byte[] bytes = serializer.serialize(committable);
         Files.write(path.resolve("committable"), bytes);
@@ -157,6 +169,12 @@ public class FileSinkCommittableSerializerMigrationTest {
 
         Assert.assertTrue(committable.hasPendingFile());
         Assert.assertFalse(committable.hasInProgressFileToCleanup());
+        Assert.assertFalse(committable.hasCompactedFileToCleanup());
+        if (previousVersion == 1) {
+            Assert.assertEquals(BUCKET_NOT_AVAILABLE, committable.getBucketId());
+        } else {
+            Assert.assertEquals(BUCKET_ID, committable.getBucketId());
+        }
     }
 
     private java.nio.file.Path resolveVersionPath(long version, String scenario) {

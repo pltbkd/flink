@@ -42,7 +42,7 @@ import java.util.Collections;
 @RunWith(Parameterized.class)
 public class HadoopPathBasedPendingFileRecoverableSerializerMigrationTest {
 
-    private static final int CURRENT_VERSION = 1;
+    private static final int CURRENT_VERSION = 2;
 
     @Parameterized.Parameters(name = "Previous Version = {0}")
     public static Collection<Integer> previousVersions() {
@@ -55,6 +55,8 @@ public class HadoopPathBasedPendingFileRecoverableSerializerMigrationTest {
             new org.apache.hadoop.fs.Path("file://target");
     private static final org.apache.hadoop.fs.Path TEMP_PATH =
             new org.apache.hadoop.fs.Path("file://temp");
+    private static final long FILE_SIZE = 7L;
+    private static final long SIZE_NOT_AVAILABLE = -1L;
 
     private static final java.nio.file.Path CASE_PATH =
             Paths.get("src/test/resources/")
@@ -70,7 +72,7 @@ public class HadoopPathBasedPendingFileRecoverableSerializerMigrationTest {
         HadoopPathBasedPendingFileRecoverableSerializer serializer =
                 new HadoopPathBasedPendingFileRecoverableSerializer();
         HadoopPathBasedPendingFileRecoverable recoverable =
-                new HadoopPathBasedPendingFileRecoverable(TARGET_PATH, TEMP_PATH);
+                new HadoopPathBasedPendingFileRecoverable(TARGET_PATH, TEMP_PATH, FILE_SIZE);
         byte[] bytes = serializer.serialize(recoverable);
         Files.write(versionPath, bytes);
     }
@@ -87,6 +89,11 @@ public class HadoopPathBasedPendingFileRecoverableSerializerMigrationTest {
 
         Assert.assertEquals(TARGET_PATH, recoverable.getTargetFilePath());
         Assert.assertEquals(TEMP_PATH, recoverable.getTempFilePath());
+        if (previousVersion == 1) {
+            Assert.assertEquals(SIZE_NOT_AVAILABLE, recoverable.getSize());
+        } else {
+            Assert.assertEquals(FILE_SIZE, recoverable.getSize());
+        }
     }
 
     private java.nio.file.Path resolveVersionPath(long version, String scenario) {

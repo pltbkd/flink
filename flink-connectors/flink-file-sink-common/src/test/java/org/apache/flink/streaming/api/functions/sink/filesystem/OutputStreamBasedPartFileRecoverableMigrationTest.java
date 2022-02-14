@@ -54,7 +54,7 @@ import java.util.Collections;
 @RunWith(Parameterized.class)
 public class OutputStreamBasedPartFileRecoverableMigrationTest {
 
-    private static final int CURRENT_VERSION = 1;
+    private static final int CURRENT_VERSION = 2;
 
     @Parameterized.Parameters(name = "Previous Version = {0}")
     public static Collection<Integer> previousVersions() {
@@ -65,6 +65,10 @@ public class OutputStreamBasedPartFileRecoverableMigrationTest {
 
     private static final String IN_PROGRESS_CONTENT = "writing";
     private static final String PENDING_CONTENT = "wrote";
+    private static final Path TARGET_PATH = new Path("file://target");
+    private static final Path PATH_NOT_AVAILABLE = null;
+    private static final long FILE_SIZE = 7L;
+    private static final long SIZE_NOT_AVAILABLE = -1L;
 
     private static final java.nio.file.Path BASE_PATH =
             Paths.get("src/test/resources/").resolve("recoverable-serializer-migration");
@@ -88,7 +92,7 @@ public class OutputStreamBasedPartFileRecoverableMigrationTest {
         ResumeRecoverable resumeRecoverable = outputStream.persist();
 
         OutputStreamBasedInProgressFileRecoverable recoverable =
-                new OutputStreamBasedInProgressFileRecoverable(resumeRecoverable);
+                new OutputStreamBasedInProgressFileRecoverable(resumeRecoverable, TARGET_PATH);
         byte[] bytes = serializer.serialize(recoverable);
         Files.write(path.resolve("recoverable"), bytes);
     }
@@ -111,6 +115,11 @@ public class OutputStreamBasedPartFileRecoverableMigrationTest {
         // make sure the ResumeRecoverable is valid
         writer.recover(
                 ((OutputStreamBasedInProgressFileRecoverable) recoverable).getResumeRecoverable());
+        if (previousVersion == 1) {
+            Assert.assertEquals(PATH_NOT_AVAILABLE, recoverable.getPath());
+        } else {
+            Assert.assertEquals(TARGET_PATH, recoverable.getPath());
+        }
     }
 
     @Test
@@ -130,7 +139,8 @@ public class OutputStreamBasedPartFileRecoverableMigrationTest {
         CommitRecoverable commitRecoverable = outputStream.closeForCommit().getRecoverable();
 
         OutputStreamBasedPendingFileRecoverable recoverable =
-                new OutputStreamBasedPendingFileRecoverable(commitRecoverable);
+                new OutputStreamBasedPendingFileRecoverable(
+                        commitRecoverable, TARGET_PATH, FILE_SIZE);
         byte[] bytes = serializer.serialize(recoverable);
         Files.write(path.resolve("recoverable"), bytes);
     }
@@ -153,6 +163,13 @@ public class OutputStreamBasedPartFileRecoverableMigrationTest {
         // make sure the CommitRecoverable is valid
         writer.recoverForCommit(
                 ((OutputStreamBasedPendingFileRecoverable) recoverable).getCommitRecoverable());
+        if (previousVersion == 1) {
+            Assert.assertEquals(PATH_NOT_AVAILABLE, recoverable.getPath());
+            Assert.assertEquals(SIZE_NOT_AVAILABLE, recoverable.getSize());
+        } else {
+            Assert.assertEquals(TARGET_PATH, recoverable.getPath());
+            Assert.assertEquals(FILE_SIZE, recoverable.getSize());
+        }
     }
 
     private java.nio.file.Path resolveVersionPath(long version, String scenario) {
