@@ -22,6 +22,7 @@ import org.apache.flink.annotation.Public;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.Serializable;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The interface for Source. It acts like a factory class that helps construct the {@link
@@ -95,4 +96,9 @@ public interface Source<T, SplitT extends SourceSplit, EnumChkT> extends Seriali
      * @return The serializer for the SplitEnumerator checkpoint.
      */
     SimpleVersionedSerializer<EnumChkT> getEnumeratorCheckpointSerializer();
+
+    /** HACK solution. */
+    default CompletableFuture<byte[]> getOperatorIdFuture() {
+        return CompletableFuture.completedFuture(null);
+    }
 }

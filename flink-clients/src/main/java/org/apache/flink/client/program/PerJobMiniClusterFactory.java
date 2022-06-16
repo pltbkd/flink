@@ -141,7 +141,7 @@ public final class PerJobMiniClusterFactory {
                 .setConfiguration(configuration)
                 .setNumTaskManagers(numTaskManagers)
                 .setRpcServiceSharing(RpcServiceSharing.SHARED)
-                .setNumSlotsPerTaskManager(numSlotsPerTaskManager)
+                .setNumSlotsPerTaskManager(4)
                 .build();
     }
 

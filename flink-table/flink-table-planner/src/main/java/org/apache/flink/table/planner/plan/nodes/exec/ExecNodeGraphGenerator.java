@@ -56,7 +56,7 @@ public class ExecNodeGraphGenerator {
         return new ExecNodeGraph(rootNodes);
     }
 
-    private ExecNode<?> generate(FlinkPhysicalRel rel) {
+    public ExecNode<?> generate(FlinkPhysicalRel rel) {
         ExecNode<?> execNode = visitedRels.get(rel);
         if (execNode != null) {
             return execNode;

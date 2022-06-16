@@ -23,6 +23,7 @@ import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.InputFormatSourceFunction;
+import org.apache.flink.streaming.api.transformations.SourceTransformation;
 import org.apache.flink.table.connector.source.ScanTableSource;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.planner.delegation.PlannerBase;
@@ -35,6 +36,10 @@ import org.apache.flink.table.planner.plan.nodes.exec.utils.ExecNodeUtil;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.types.logical.RowType;
 
+import javax.annotation.Nullable;
+
+import java.util.concurrent.CompletableFuture;
+
 /**
  * Batch {@link ExecNode} to read data from an external source defined by a bounded {@link
  * ScanTableSource}.
@@ -42,7 +47,10 @@ import org.apache.flink.table.types.logical.RowType;
 public class BatchExecTableSourceScan extends CommonExecTableSourceScan
         implements BatchExecNode<RowData> {
 
+    private final BatchExecDynamicPartitionSink dppSink;
+
     public BatchExecTableSourceScan(
+            @Nullable BatchExecDynamicPartitionSink dppSink,
             ReadableConfig tableConfig,
             DynamicTableSourceSpec tableSourceSpec,
             RowType outputType,
@@ -54,6 +62,7 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
                 tableSourceSpec,
                 outputType,
                 description);
+        this.dppSink = dppSink;
     }
 
     @Override
@@ -64,6 +73,17 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
         // the boundedness has been checked via the runtime provider already, so we can safely
         // declare all legacy transformations as bounded to make the stream graph generator happy
         ExecNodeUtil.makeLegacySourceTransformationsBounded(transformation);
+
+        if (transformation instanceof SourceTransformation && dppSink != null) {
+            CompletableFuture<byte[]> sourceOperatorIdFuture =
+                    ((SourceTransformation<?, ?, ?>) transformation)
+                            .getSource()
+                            .getOperatorIdFuture();
+            dppSink.setSourceOperatorIdFuture(sourceOperatorIdFuture);
+            Transformation<Object> dppTransformation =
+                    dppSink.translateToPlanInternal(planner, config);
+            planner.addExtraTransformation(dppTransformation);
+        }
         return transformation;
     }
 

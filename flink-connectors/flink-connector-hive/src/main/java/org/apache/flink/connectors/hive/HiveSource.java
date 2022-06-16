@@ -26,7 +26,6 @@ import org.apache.flink.connector.file.src.AbstractFileSource;
 import org.apache.flink.connector.file.src.ContinuousEnumerationSettings;
 import org.apache.flink.connector.file.src.PendingSplitsCheckpoint;
 import org.apache.flink.connector.file.src.assigners.FileSplitAssigner;
-import org.apache.flink.connector.file.src.enumerate.FileEnumerator;
 import org.apache.flink.connector.file.src.reader.BulkFormat;
 import org.apache.flink.connector.file.table.ContinuousPartitionFetcher;
 import org.apache.flink.connectors.hive.read.HiveSourceSplit;
@@ -45,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * A unified data source that reads a hive table. HiveSource works on {@link HiveSourceSplit} and
@@ -62,13 +62,17 @@ public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
     private final int threadNum;
     private final JobConfWrapper jobConfWrapper;
     private final List<String> partitionKeys;
+    private final List<String> dynamicPartitionKeys;
+    private final List<HiveTablePartition> partitions;
     private final ContinuousPartitionFetcher<Partition, ?> fetcher;
     private final HiveTableSource.HiveContinuousPartitionFetcherContext<?> fetcherContext;
     private final ObjectPath tablePath;
+    private final transient CompletableFuture<byte[]> operatorIdFuture;
 
     HiveSource(
             Path[] inputPaths,
-            FileEnumerator.Provider fileEnumerator,
+            List<String> dynamicPartitionKeys,
+            List<HiveTablePartition> partitions,
             FileSplitAssigner.Provider splitAssigner,
             BulkFormat<T, HiveSourceSplit> readerFormat,
             @Nullable ContinuousEnumerationSettings continuousEnumerationSettings,
@@ -80,7 +84,10 @@ public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
             @Nullable HiveTableSource.HiveContinuousPartitionFetcherContext<?> fetcherContext) {
         super(
                 inputPaths,
-                fileEnumerator,
+                new HiveSourceFileEnumerator.Provider(
+                        partitions != null ? partitions : Collections.emptyList(),
+                        threadNum,
+                        new JobConfWrapper(jobConf)),
                 splitAssigner,
                 readerFormat,
                 continuousEnumerationSettings);
@@ -92,8 +99,16 @@ public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
         this.jobConfWrapper = new JobConfWrapper(jobConf);
         this.tablePath = tablePath;
         this.partitionKeys = partitionKeys;
+        this.dynamicPartitionKeys = dynamicPartitionKeys;
+        this.partitions = partitions;
         this.fetcher = fetcher;
         this.fetcherContext = fetcherContext;
+        this.operatorIdFuture = new CompletableFuture<>();
+    }
+
+    @Override
+    public CompletableFuture<byte[]> getOperatorIdFuture() {
+        return operatorIdFuture;
     }
 
     @Override
@@ -120,6 +135,8 @@ public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
                     fetcherContext.getConsumeStartOffset(),
                     Collections.emptyList(),
                     Collections.emptyList());
+        } else if (dynamicPartitionKeys != null) {
+            return createDynamicSplitEnumerator(enumContext);
         } else {
             return super.createEnumerator(enumContext);
         }
@@ -168,5 +185,18 @@ public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
                 tablePath,
                 fetcher,
                 fetcherContext);
+    }
+
+    private SplitEnumerator<HiveSourceSplit, PendingSplitsCheckpoint<HiveSourceSplit>>
+            createDynamicSplitEnumerator(SplitEnumeratorContext<HiveSourceSplit> enumContext) {
+        return new HiveDynamicFileSplitEnumerator(
+                enumContext,
+                new HiveSourceDynamicFileEnumerator.Provider(
+                        tablePath.getFullName(),
+                        dynamicPartitionKeys,
+                        partitions,
+                        threadNum,
+                        jobConfWrapper),
+                getAssignerFactory());
     }
 }

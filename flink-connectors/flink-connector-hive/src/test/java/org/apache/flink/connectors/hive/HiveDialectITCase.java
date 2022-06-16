@@ -18,6 +18,7 @@
 
 package org.apache.flink.connectors.hive;
 
+import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.sql.parser.hive.ddl.SqlCreateHiveTable;
 import org.apache.flink.table.HiveVersionTestUtil;
 import org.apache.flink.table.api.SqlDialect;
@@ -25,6 +26,7 @@ import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.api.config.ExecutionConfigOptions;
 import org.apache.flink.table.api.internal.TableEnvironmentInternal;
 import org.apache.flink.table.catalog.CatalogBaseTable;
 import org.apache.flink.table.catalog.CatalogPartitionSpec;
@@ -34,6 +36,7 @@ import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.catalog.ObjectPath;
 import org.apache.flink.table.catalog.hive.HiveCatalog;
 import org.apache.flink.table.catalog.hive.HiveTestUtils;
+import org.apache.flink.table.catalog.stats.CatalogTableStatistics;
 import org.apache.flink.table.delegation.Parser;
 import org.apache.flink.table.operations.DescribeTableOperation;
 import org.apache.flink.table.operations.command.ClearOperation;
@@ -350,6 +353,60 @@ public class HiveDialectITCase {
         assertThat(results.toString())
                 .isEqualTo(
                         "[+I[1, 0, static], +I[1, 1, a], +I[1, 2, b], +I[1, 3, c], +I[2, 0, static], +I[2, 1, b], +I[3, 0, static], +I[3, 1, c]]");
+    }
+
+    @Test
+    public void testDpp() throws Exception {
+        // src table
+        tableEnv.executeSql("create table dim (x int,y string,z int)");
+        tableEnv.executeSql("insert into dim values (1,'a',1),(2,'b',1),(3,'c',2)").await();
+
+        // partitioned dest table
+        tableEnv.executeSql("create table fact (a int, b bigint, c string) partitioned by (p int)");
+        tableEnv.executeSql(
+                        "insert into fact partition (p=1) values (10,100,'aaa'),(11,101,'bbb'),(12,102,'ccc') ")
+                .await();
+        tableEnv.executeSql(
+                        "insert into fact partition (p=2) values (20,200,'aaa'),(21,201,'bbb'),(22,202,'ccc') ")
+                .await();
+        tableEnv.executeSql(
+                        "insert into fact partition (p=3) values (30,300,'aaa'),(31,301,'bbb'),(32,302,'ccc') ")
+                .await();
+
+        tableEnv.getConfig().set(TaskManagerOptions.NUM_TASK_SLOTS, 4);
+        tableEnv.getConfig().set(ExecutionConfigOptions.TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM, 1);
+        tableEnv.getConfig().set(HiveOptions.TABLE_EXEC_HIVE_INFER_SOURCE_PARALLELISM, false);
+        String result =
+                "[+I[10, 100, aaa, 1, 1, a], +I[11, 101, bbb, 1, 1, a], +I[12, 102, ccc, 1, 1, a], "
+                        + "+I[20, 200, aaa, 2, 2, b], +I[21, 201, bbb, 2, 2, b], +I[22, 202, ccc, 2, 2, b]]";
+        List<Row> results =
+                queryResult(
+                        tableEnv.sqlQuery(
+                                "select a, b, c, p, x, y from fact, dim where x = p and z = 1 order by a"));
+        assertThat(results.toString()).isEqualTo(result);
+        results =
+                queryResult(
+                        tableEnv.sqlQuery(
+                                "select a, b, c, p, x, y from dim, fact where x = p and z = 1 order by a"));
+        assertThat(results.toString()).isEqualTo(result);
+
+        tableEnv.getCatalog(tableEnv.getCurrentCatalog())
+                .get()
+                .alterTableStatistics(
+                        new ObjectPath(tableEnv.getCurrentDatabase(), "dim"),
+                        new CatalogTableStatistics(3, -1, -1, -1),
+                        false);
+        results =
+                queryResult(
+                        tableEnv.sqlQuery(
+                                "select a, b, c, p, x, y from fact, dim where x = p and z = 1 order by a"));
+        assertThat(results.toString()).isEqualTo(result);
+
+        results =
+                queryResult(
+                        tableEnv.sqlQuery(
+                                "select a, b, c, p, x, y from dim, fact where x = p and z = 1 order by a"));
+        assertThat(results.toString()).isEqualTo(result);
     }
 
     @Test
