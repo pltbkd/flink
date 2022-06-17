@@ -23,7 +23,6 @@ import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.abilities.SupportsDynamicPartitionPruning;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
-import org.apache.flink.table.planner.plan.abilities.source.PartitionPushDownSpec;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalCalc;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicPartitionSink;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalJoinBase;
@@ -98,10 +97,6 @@ public abstract class DynamicPartitionPruningRuleBase extends RelRule<RelRule.Co
         CatalogTable catalogTable = tableSourceTable.contextResolvedTable().getTable();
         List<String> partitionKeys = catalogTable.getPartitionKeys();
         if (partitionKeys.isEmpty()) {
-            return false;
-        }
-        if (Arrays.stream(tableSourceTable.abilitySpecs())
-                .anyMatch(spec -> spec instanceof PartitionPushDownSpec)) {
             return false;
         }
 
