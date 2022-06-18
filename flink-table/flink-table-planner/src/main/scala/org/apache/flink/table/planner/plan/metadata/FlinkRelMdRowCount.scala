@@ -23,6 +23,7 @@ import org.apache.flink.configuration.ConfigOptions.key
 import org.apache.flink.table.planner.plan.logical.{LogicalWindow, SlidingGroupWindow, TumblingGroupWindow}
 import org.apache.flink.table.planner.plan.nodes.calcite.{Expand, Rank, WindowAggregate}
 import org.apache.flink.table.planner.plan.nodes.physical.batch._
+import org.apache.flink.table.planner.plan.rules.physical.batch.DynamicPartitionPruningRule
 import org.apache.flink.table.planner.plan.stats.ValueInterval
 import org.apache.flink.table.planner.plan.utils.{FlinkRelMdUtil, SortUtil}
 import org.apache.flink.table.planner.plan.utils.AggregateUtil.{hasTimeIntervalType, toLong}
@@ -335,10 +336,16 @@ class FlinkRelMdRowCount private extends MetadataHandler[BuiltInMetadata.RowCoun
       fmq.getSelectivity(joinWithOnlyEquiPred, nonEquiPred)
     }
 
+    val ddpFactor = if (DynamicPartitionPruningRule.supportDynamicPartitionPruning(join)) {
+      0.5
+    } else {
+      1
+    }
+
     if (leftNdv != null && rightNdv != null) {
       // selectivity of equi part is 1 / Max(leftNdv, rightNdv)
       val selectivityOfEquiPred = Math.min(1d, 1d / Math.max(leftNdv, rightNdv))
-      return leftRowCount * rightRowCount * selectivityOfEquiPred * selectivityOfNonEquiPred
+      return leftRowCount * rightRowCount * selectivityOfEquiPred * selectivityOfNonEquiPred * ddpFactor
     }
 
     val leftKeysAreUnique = fmq.areColumnsUnique(leftChild, leftKeySet)
@@ -356,14 +363,14 @@ class FlinkRelMdRowCount private extends MetadataHandler[BuiltInMetadata.RowCoun
       } else {
         leftRowCount * selectivityOfNonEquiPred
       }
-      return outputRowCount
+      return outputRowCount * ddpFactor
     }
 
     // if joinCondition has no ndv stats and no uniqueKeys stats,
     // rowCount = (leftRowCount + rightRowCount) * join condition selectivity
     val crossJoin = copyJoinWithNewCondition(join, rexBuilder.makeLiteral(true))
     val selectivity = fmq.getSelectivity(crossJoin, condition)
-    (leftRowCount + rightRowCount) * selectivity
+    (leftRowCount + rightRowCount) * selectivity * ddpFactor
   }
 
   private def copyJoinWithNewCondition(join: Join, newCondition: RexNode): Join = {

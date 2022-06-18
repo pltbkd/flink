@@ -435,9 +435,6 @@ object FlinkBatchRuleSets {
     PushLocalSortAggWithSortIntoScanRule.INSTANCE,
     PushLocalSortAggWithCalcIntoScanRule.INSTANCE,
     PushLocalSortAggWithSortAndCalcIntoScanRule.INSTANCE,
-    DynamicPartitionPruningRule1.FACT_IN_RIGHT,
-    DynamicPartitionPruningRule2.FACT_IN_LEFT,
-    DynamicPartitionPruningRule3.FACT_IN_RIGHT,
-    DynamicPartitionPruningRule4.FACT_IN_LEFT
+    DynamicPartitionPruningRule.INSTANCE
   )
 }
