@@ -337,7 +337,7 @@ class FlinkRelMdRowCount private extends MetadataHandler[BuiltInMetadata.RowCoun
     }
 
     val ddpFactor = if (DynamicPartitionPruningRule.supportDynamicPartitionPruning(join)) {
-      0.5
+      0.1
     } else {
       1
     }
