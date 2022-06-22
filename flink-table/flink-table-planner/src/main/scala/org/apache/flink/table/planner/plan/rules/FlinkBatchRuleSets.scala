@@ -19,6 +19,7 @@ package org.apache.flink.table.planner.plan.rules
 
 import org.apache.flink.table.planner.plan.nodes.logical._
 import org.apache.flink.table.planner.plan.rules.logical.{RemoveUnreachableCoalesceArgumentsRule, _}
+import org.apache.flink.table.planner.plan.rules.logical.JoinToMultiJoinRule
 import org.apache.flink.table.planner.plan.rules.physical.FlinkExpandConversionRule
 import org.apache.flink.table.planner.plan.rules.physical.batch._
 
@@ -214,7 +215,7 @@ object FlinkBatchRuleSets {
 
   val JOIN_REORDER_PREPARE_RULES: RuleSet = RuleSets.ofList(
     // merge join to MultiJoin
-    CoreRules.JOIN_TO_MULTI_JOIN,
+    JoinToMultiJoinRule.INSTANCE,
     // merge project to MultiJoin
     CoreRules.PROJECT_MULTI_JOIN_MERGE,
     // merge filter to MultiJoin
