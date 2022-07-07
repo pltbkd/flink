@@ -85,6 +85,10 @@ public class SpeculativeExecutionVertex extends ExecutionVertex {
         return Collections.unmodifiableCollection(currentExecutions.values());
     }
 
+    public Execution getCurrentExecutionOrThrow(final ExecutionAttemptID attemptId) {
+        return checkNotNull(currentExecutions.get(attemptId));
+    }
+
     @Override
     public Execution getPartitionProducer() {
         final Execution finishedExecution = getCurrentExecutionAttempt();

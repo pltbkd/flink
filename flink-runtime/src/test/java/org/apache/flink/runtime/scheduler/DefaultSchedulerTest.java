@@ -1690,7 +1690,7 @@ public class DefaultSchedulerTest extends TestLogger {
         schedulerClosed.get();
     }
 
-    private static TaskExecutionState createFailedTaskExecutionState(
+    public static TaskExecutionState createFailedTaskExecutionState(
             ExecutionAttemptID executionAttemptID) {
         return new TaskExecutionState(
                 executionAttemptID, ExecutionState.FAILED, new Exception("Expected failure cause"));
@@ -1745,7 +1745,7 @@ public class DefaultSchedulerTest extends TestLogger {
         scheduler.getJobTerminationFuture().get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
     }
 
-    private static JobGraph singleNonParallelJobVertexJobGraph() {
+    public static JobGraph singleNonParallelJobVertexJobGraph() {
         return singleJobVertexJobGraph(1);
     }
 
@@ -1784,7 +1784,7 @@ public class DefaultSchedulerTest extends TestLogger {
         return JobGraphTestUtils.streamingJobGraph(source, sink);
     }
 
-    private static JobVertex getOnlyJobVertex(final JobGraph jobGraph) {
+    public static JobVertex getOnlyJobVertex(final JobGraph jobGraph) {
         final List<JobVertex> sortedVertices = jobGraph.getVerticesSortedTopologicallyFromSources();
         Preconditions.checkState(sortedVertices.size() == 1);
         return sortedVertices.get(0);

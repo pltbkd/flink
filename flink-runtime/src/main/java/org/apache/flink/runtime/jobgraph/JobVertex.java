@@ -308,7 +308,7 @@ public class JobVertex implements java.io.Serializable {
      * @param parallelism The parallelism for the task.
      */
     public void setParallelism(int parallelism) {
-        if (parallelism < 1) {
+        if (parallelism < 1 && parallelism != ExecutionConfig.PARALLELISM_DEFAULT) {
             throw new IllegalArgumentException("The parallelism must be at least one.");
         }
         this.parallelism = parallelism;

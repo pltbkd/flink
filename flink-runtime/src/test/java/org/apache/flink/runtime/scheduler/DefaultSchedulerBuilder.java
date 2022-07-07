@@ -23,12 +23,15 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.blob.VoidBlobWriter;
+import org.apache.flink.runtime.blocklist.BlocklistHandler;
+import org.apache.flink.runtime.blocklist.VoidBlocklistHandler;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.CheckpointsCleaner;
 import org.apache.flink.runtime.checkpoint.StandaloneCheckpointRecoveryFactory;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.JobStatusListener;
+import org.apache.flink.runtime.executiongraph.SpeculativeExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.failover.flip1.FailoverStrategy;
 import org.apache.flink.runtime.executiongraph.failover.flip1.NoRestartBackoffTimeStrategy;
 import org.apache.flink.runtime.executiongraph.failover.flip1.RestartBackoffTimeStrategy;
@@ -40,6 +43,7 @@ import org.apache.flink.runtime.jobmaster.DefaultExecutionDeploymentTracker;
 import org.apache.flink.runtime.metrics.groups.JobManagerJobMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.scheduler.adaptivebatch.AdaptiveBatchScheduler;
+import org.apache.flink.runtime.scheduler.adaptivebatch.SpeculativeScheduler;
 import org.apache.flink.runtime.scheduler.adaptivebatch.VertexParallelismDecider;
 import org.apache.flink.runtime.scheduler.strategy.PipelinedRegionSchedulingStrategy;
 import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategyFactory;
@@ -95,6 +99,7 @@ public class DefaultSchedulerBuilder {
     private VertexParallelismDecider vertexParallelismDecider = (ignored) -> 0;
     private int defaultMaxParallelism =
             JobManagerOptions.ADAPTIVE_BATCH_SCHEDULER_MAX_PARALLELISM.defaultValue();
+    private BlocklistHandler blocklistHandler = new VoidBlocklistHandler();
 
     public DefaultSchedulerBuilder(
             JobGraph jobGraph,
@@ -245,6 +250,11 @@ public class DefaultSchedulerBuilder {
         return this;
     }
 
+    public DefaultSchedulerBuilder setBlocklistHandler(BlocklistHandler blocklistHandler) {
+        this.blocklistHandler = blocklistHandler;
+        return this;
+    }
+
     public DefaultScheduler build() throws Exception {
         return new DefaultScheduler(
                 log,
@@ -301,7 +311,41 @@ public class DefaultSchedulerBuilder {
                 defaultMaxParallelism);
     }
 
+    public SpeculativeScheduler buildSpeculativeScheduler() throws Exception {
+        return new SpeculativeScheduler(
+                log,
+                jobGraph,
+                ioExecutor,
+                jobMasterConfiguration,
+                componentMainThreadExecutor -> {},
+                delayExecutor,
+                userCodeLoader,
+                checkpointCleaner,
+                checkpointRecoveryFactory,
+                jobManagerJobMetricGroup,
+                new VertexwiseSchedulingStrategy.Factory(),
+                failoverStrategyFactory,
+                restartBackoffTimeStrategy,
+                executionOperations,
+                executionVertexVersioner,
+                executionSlotAllocatorFactory,
+                System.currentTimeMillis(),
+                mainThreadExecutor,
+                jobStatusListener,
+                createExecutionGraphFactory(true, new SpeculativeExecutionJobVertex.Factory()),
+                shuffleMaster,
+                rpcTimeout,
+                vertexParallelismDecider,
+                defaultMaxParallelism,
+                blocklistHandler);
+    }
+
     private ExecutionGraphFactory createExecutionGraphFactory(boolean isDynamicGraph) {
+        return createExecutionGraphFactory(isDynamicGraph, new ExecutionJobVertex.Factory());
+    }
+
+    private ExecutionGraphFactory createExecutionGraphFactory(
+            boolean isDynamicGraph, ExecutionJobVertex.Factory executionJobVertexFactory) {
         return new DefaultExecutionGraphFactory(
                 jobMasterConfiguration,
                 userCodeLoader,
@@ -314,6 +358,6 @@ public class DefaultSchedulerBuilder {
                 shuffleMaster,
                 partitionTracker,
                 isDynamicGraph,
-                new ExecutionJobVertex.Factory());
+                executionJobVertexFactory);
     }
 }

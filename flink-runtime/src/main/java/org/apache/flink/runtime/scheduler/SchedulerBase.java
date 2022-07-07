@@ -706,26 +706,21 @@ public abstract class SchedulerBase implements SchedulerNG, CheckpointScheduling
     @Override
     public final boolean updateTaskExecutionState(
             final TaskExecutionStateTransition taskExecutionState) {
-        final ExecutionVertexID executionVertexId =
-                taskExecutionState.getID().getExecutionVertexId();
 
-        boolean updateSuccess = executionGraph.updateState(taskExecutionState);
-
-        if (updateSuccess) {
-            if (isNotifiable(executionVertexId, taskExecutionState)) {
-                updateTaskExecutionStateInternal(executionVertexId, taskExecutionState);
+        final ExecutionAttemptID attemptId = taskExecutionState.getID();
+        final Execution execution = executionGraph.getRegisteredExecutions().get(attemptId);
+        if (execution != null && executionGraph.updateState(taskExecutionState)) {
+            if (isNotifiable(execution, taskExecutionState)) {
+                onTaskExecutionStateUpdate(execution);
             }
             return true;
-        } else {
-            return false;
         }
+
+        return false;
     }
 
     private boolean isNotifiable(
-            final ExecutionVertexID executionVertexId,
-            final TaskExecutionStateTransition taskExecutionState) {
-
-        final ExecutionVertex executionVertex = getExecutionVertex(executionVertexId);
+            final Execution execution, final TaskExecutionStateTransition taskExecutionState) {
 
         // only notifies FINISHED and FAILED states which are needed at the moment.
         // can be refined in FLINK-14233 after the legacy scheduler is removed and
@@ -735,7 +730,7 @@ public abstract class SchedulerBase implements SchedulerNG, CheckpointScheduling
             case FAILED:
                 // only notifies a state update if it's effective, namely it successfully
                 // turns the execution state to the expected value.
-                if (executionVertex.getExecutionState() == taskExecutionState.getExecutionState()) {
+                if (execution.getState() == taskExecutionState.getExecutionState()) {
                     return true;
                 }
                 break;
@@ -746,9 +741,7 @@ public abstract class SchedulerBase implements SchedulerNG, CheckpointScheduling
         return false;
     }
 
-    protected void updateTaskExecutionStateInternal(
-            final ExecutionVertexID executionVertexId,
-            final TaskExecutionStateTransition taskExecutionState) {}
+    protected abstract void onTaskExecutionStateUpdate(final Execution execution);
 
     @Override
     public SerializedInputSplit requestNextInputSplit(
@@ -770,7 +763,7 @@ public abstract class SchedulerBase implements SchedulerNG, CheckpointScheduling
     }
 
     @VisibleForTesting
-    Iterable<RootExceptionHistoryEntry> getExceptionHistory() {
+    public Iterable<RootExceptionHistoryEntry> getExceptionHistory() {
         return exceptionHistory.toArrayList();
     }
 
