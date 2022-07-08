@@ -72,10 +72,10 @@ public abstract class DynamicPartitionPruningRuleBase extends RelRule<RelRule.Co
         if (!ShortcutUtils.unwrapContext(join).getTableConfig().get(TABLE_OPTIMIZER_DPP_ENABLED)) {
             return false;
         }
-        if (factScan.dppSink() != null) {
-            // rule applied
-            return false;
-        }
+//        if (factScan.dppSink() != null) {
+//            // rule applied
+//            return false;
+//        }
 
         // TODO support more join types
         if (join.getJoinType() != JoinRelType.INNER) {
@@ -143,7 +143,8 @@ public abstract class DynamicPartitionPruningRuleBase extends RelRule<RelRule.Co
         final BatchPhysicalDynamicPartitionSink dppSink =
                 createDynamicPartitionSink(dimSide, dimPartitionFields);
 
-        return factScan.copy(newTable, dppSink);
+        // return factScan.copy(newTable);
+        return null;
     }
 
     private BatchPhysicalDynamicPartitionSink createDynamicPartitionSink(

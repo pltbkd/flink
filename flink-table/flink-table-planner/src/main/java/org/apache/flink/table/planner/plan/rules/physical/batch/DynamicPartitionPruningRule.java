@@ -24,6 +24,7 @@ import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.abilities.SupportsDynamicPartitionPruning;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
+import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicPartitionPlaceholderFilter;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicPartitionSink;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalJoinBase;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalTableSourceScan;
@@ -68,7 +69,7 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
     }
 
     public static final RelOptRule INSTANCE =
-            DynamicPartitionPruningRule1.Config.EMPTY
+            DynamicPartitionPruningRule.Config.EMPTY
                     .withDescription("DynamicPartitionPruningRule")
                     .as(Config.class)
                     .rule()
@@ -100,6 +101,13 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
         }
         RelNode left = join.getLeft();
         RelNode right = join.getRight();
+
+        // Has applied
+        if (left instanceof BatchPhysicalDynamicPartitionPlaceholderFilter
+                || right instanceof BatchPhysicalDynamicPartitionPlaceholderFilter) {
+            return false;
+        }
+
         ImmutableIntList leftPartitionKeys =
                 extractPartitionKeysFromFactSide(left, joinInfo.leftKeys);
 
@@ -231,10 +239,6 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
                 return ImmutableIntList.of();
             }
             if (!(table.tableSource() instanceof SupportsDynamicPartitionPruning)) {
-                return ImmutableIntList.of();
-            }
-            if (scan instanceof BatchPhysicalTableSourceScan
-                    && ((BatchPhysicalTableSourceScan) scan).dppSink() != null) {
                 return ImmutableIntList.of();
             }
             CatalogTable catalogTable = table.contextResolvedTable().getTable();
@@ -390,7 +394,7 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
         return ImmutableIntList.of();
     }
 
-    private TableScan createNewTableSourceScan(
+    private BatchPhysicalDynamicPartitionPlaceholderFilter createNewTableSourceScan(
             BatchPhysicalTableSourceScan factScan,
             RelNode dimSide,
             ImmutableIntList partitionKeysInFactScan,
@@ -413,7 +417,14 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
         final BatchPhysicalDynamicPartitionSink dppSink =
                 createDynamicPartitionSink(dimSide, partitionKeysInDim.toIntArray());
 
-        return factScan.copy(newTable, dppSink);
+        TableScan tableScan = factScan.copy(newTable);
+
+        return new BatchPhysicalDynamicPartitionPlaceholderFilter(
+                tableScan.getCluster(),
+                tableScan.getTraitSet(),
+                dppSink,
+                tableScan,
+                tableScan.getRowType());
     }
 
     private BatchPhysicalDynamicPartitionSink createDynamicPartitionSink(

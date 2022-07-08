@@ -17,20 +17,16 @@
  */
 package org.apache.flink.table.planner.plan.nodes.physical.batch
 
+import org.apache.calcite.plan._
+import org.apache.calcite.rel.hint.RelHint
+import org.apache.calcite.rel.metadata.RelMetadataQuery
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
-import org.apache.flink.table.planner.plan.nodes.exec.{ExecNode, ExecNodeGraphGenerator, InputProperty}
-import org.apache.flink.table.planner.plan.nodes.exec.batch.{BatchExecDynamicPartitionSink, BatchExecTableSourceScan}
+import org.apache.flink.table.planner.plan.nodes.exec.ExecNode
+import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecTableSourceScan
 import org.apache.flink.table.planner.plan.nodes.exec.spec.DynamicTableSourceSpec
 import org.apache.flink.table.planner.plan.nodes.physical.common.CommonPhysicalTableSourceScan
 import org.apache.flink.table.planner.plan.schema.TableSourceTable
-import org.apache.flink.table.planner.plan.utils.{FlinkRelOptUtil, RelExplainUtil}
-import org.apache.flink.table.planner.utils.JavaScalaConversionUtil
 import org.apache.flink.table.planner.utils.ShortcutUtils.unwrapTableConfig
-
-import org.apache.calcite.plan._
-import org.apache.calcite.rel.{RelNode, RelWriter}
-import org.apache.calcite.rel.hint.RelHint
-import org.apache.calcite.rel.metadata.RelMetadataQuery
 
 import java.util
 
@@ -39,33 +35,22 @@ import java.util
  * [[org.apache.flink.table.connector.source.ScanTableSource]].
  */
 class BatchPhysicalTableSourceScan(
-    cluster: RelOptCluster,
-    traitSet: RelTraitSet,
-    hints: util.List[RelHint],
-    tableSourceTable: TableSourceTable,
-    val dppSink: BatchPhysicalDynamicPartitionSink = null)
+  cluster: RelOptCluster,
+  traitSet: RelTraitSet,
+  hints: util.List[RelHint],
+  tableSourceTable: TableSourceTable)
   extends CommonPhysicalTableSourceScan(cluster, traitSet, hints, tableSourceTable)
-  with BatchPhysicalRel {
+    with BatchPhysicalRel {
 
   def copy(
-      traitSet: RelTraitSet,
-      tableSourceTable: TableSourceTable): BatchPhysicalTableSourceScan = {
-    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, tableSourceTable, dppSink)
+    traitSet: RelTraitSet,
+    tableSourceTable: TableSourceTable): BatchPhysicalTableSourceScan = {
+    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, tableSourceTable)
   }
 
   def copy(
-      newTableSourceTable: TableSourceTable,
-      dppSink: BatchPhysicalDynamicPartitionSink): BatchPhysicalTableSourceScan = {
-    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, newTableSourceTable, dppSink)
-  }
-
-  override def explainTerms(pw: RelWriter): RelWriter = {
-    val partitionFields = if (dppSink != null) {
-      dppSink.partitionFields.map(i => dppSink.getRowType.getFieldNames.get(i)).mkString(",")
-    } else {
-      ""
-    }
-    super.explainTerms(pw).itemIf("dpp", partitionFields, dppSink != null)
+    newTableSourceTable: TableSourceTable): BatchPhysicalTableSourceScan = {
+    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, newTableSourceTable)
   }
 
   override def computeSelfCost(planner: RelOptPlanner, mq: RelMetadataQuery): RelOptCost = {
@@ -85,15 +70,7 @@ class BatchPhysicalTableSourceScan(
       util.Arrays.asList(tableSourceTable.abilitySpecs: _*))
     tableSourceSpec.setTableSource(tableSourceTable.tableSource)
 
-    val ddpNode = if (dppSink != null) {
-      val ddpNode = new ExecNodeGraphGenerator().generate(dppSink)
-      ddpNode.asInstanceOf[BatchExecDynamicPartitionSink]
-    } else {
-      null
-    }
-
     new BatchExecTableSourceScan(
-      ddpNode,
       unwrapTableConfig(this),
       tableSourceSpec,
       FlinkTypeFactory.toLogicalRowType(getRowType),
