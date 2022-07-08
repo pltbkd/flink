@@ -22,7 +22,7 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.operators.coordination.OperatorEventDispatcher;
 import org.apache.flink.streaming.api.operators.CoordinatedOperatorFactory;
-import org.apache.flink.streaming.api.operators.SimpleUdfStreamOperatorFactory;
+import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.StreamOperatorParameters;
 import org.apache.flink.table.api.TableException;
@@ -32,14 +32,14 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /** DynamicPartitionSinkFactory. */
-public class DynamicPartitionSinkFactory extends SimpleUdfStreamOperatorFactory<Object>
+public class DynamicPartitionOperatorFactory extends SimpleOperatorFactory<Object>
         implements CoordinatedOperatorFactory<Object> {
 
     private final transient CompletableFuture<byte[]> sourceOperatorIdFuture;
     private OperatorID sourceOperatorId;
     private final DynamicPartitionOperator operator;
 
-    public DynamicPartitionSinkFactory(
+    public DynamicPartitionOperatorFactory(
             CompletableFuture<byte[]> sourceOperatorIdFuture,
             RowType partitionFieldType,
             List<Integer> partitionFieldIndices) {
@@ -77,6 +77,6 @@ public class DynamicPartitionSinkFactory extends SimpleUdfStreamOperatorFactory<
             throw new TableException("sourceOperatorId is empty");
         }
         sourceOperatorId = new OperatorID(sourceOperatorIdBytes);
-        return new DynamicPartitionSinkOperatorCoordinator.Provider(operatorID);
+        return new DynamicPartitionOperatorCoordinator.Provider(operatorID);
     }
 }

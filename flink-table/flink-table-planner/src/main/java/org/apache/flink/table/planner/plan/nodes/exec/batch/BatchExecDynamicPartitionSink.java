@@ -29,7 +29,7 @@ import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeConfig;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeContext;
 import org.apache.flink.table.planner.plan.nodes.exec.InputProperty;
 import org.apache.flink.table.planner.plan.nodes.exec.utils.ExecNodeUtil;
-import org.apache.flink.table.runtime.operators.dpp.DynamicPartitionSinkFactory;
+import org.apache.flink.table.runtime.operators.dpp.DynamicPartitionOperatorFactory;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.types.logical.RowType;
 
@@ -75,7 +75,7 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
         final Transformation<RowData> inputTransform =
                 (Transformation<RowData>) inputEdge.translateToPlan(planner);
         SimpleOperatorFactory<Object> factory =
-                new DynamicPartitionSinkFactory(
+                new DynamicPartitionOperatorFactory(
                         sourceOperatorIdFuture, (RowType) getOutputType(), partitionFields);
 
         return ExecNodeUtil.createOneInputTransformation(

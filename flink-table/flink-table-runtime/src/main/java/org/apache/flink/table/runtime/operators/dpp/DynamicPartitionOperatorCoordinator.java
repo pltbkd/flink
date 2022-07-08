@@ -29,10 +29,10 @@ import javax.annotation.Nullable;
 import java.util.concurrent.CompletableFuture;
 
 /** DynamicPartitionSinkOperatorCoordinator. */
-public class DynamicPartitionSinkOperatorCoordinator
+public class DynamicPartitionOperatorCoordinator
         implements OperatorCoordinator, CoordinationRequestHandler {
 
-    public DynamicPartitionSinkOperatorCoordinator() {}
+    public DynamicPartitionOperatorCoordinator() {}
 
     @Override
     public void start() throws Exception {}
@@ -75,7 +75,7 @@ public class DynamicPartitionSinkOperatorCoordinator
     public void resetToCheckpoint(long checkpointId, @Nullable byte[] checkpointData)
             throws Exception {}
 
-    /** Provider for {@link DynamicPartitionSinkOperatorCoordinator}. */
+    /** Provider for {@link DynamicPartitionOperatorCoordinator}. */
     public static class Provider implements OperatorCoordinator.Provider {
 
         private final OperatorID operatorId;
@@ -92,7 +92,7 @@ public class DynamicPartitionSinkOperatorCoordinator
         @Override
         public OperatorCoordinator create(Context context) {
             // we do not send operator event so we don't need a context
-            return new DynamicPartitionSinkOperatorCoordinator();
+            return new DynamicPartitionOperatorCoordinator();
         }
     }
 }
