@@ -375,7 +375,7 @@ class SpeculativeSchedulerTest {
     }
 
     private static class TestBlocklistHandler implements BlocklistHandler {
-        private List<BlockedNode> blockedNodes = new ArrayList<>();
+        private final List<BlockedNode> blockedNodes = new ArrayList<>();
 
         @Override
         public void addNewBlockedNodes(Collection<BlockedNode> newNodes) {

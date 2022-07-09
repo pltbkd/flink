@@ -323,9 +323,7 @@ public class SpeculativeScheduler extends AdaptiveBatchScheduler
     private Set<String> getSlowNodeIds(
             Map<ExecutionVertexID, Collection<ExecutionAttemptID>> slowTasks) {
         final Set<ExecutionAttemptID> slowExecutions =
-                slowTasks.values().stream()
-                        .flatMap(ids -> ids.stream())
-                        .collect(Collectors.toSet());
+                slowTasks.values().stream().flatMap(Collection::stream).collect(Collectors.toSet());
 
         return slowExecutions.stream()
                 .map(id -> getExecutionGraph().getRegisteredExecutions().get(id))
