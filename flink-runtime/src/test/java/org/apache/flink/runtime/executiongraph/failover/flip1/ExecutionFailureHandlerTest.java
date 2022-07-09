@@ -118,11 +118,11 @@ class ExecutionFailureHandlerTest {
         assertThat(result.getTimestamp()).isEqualTo(timestamp);
         assertThat(ExecutionFailureHandler.isUnrecoverableError(result.getError())).isFalse();
 
-        assertThatThrownBy(() -> result.getVerticesToRestart())
+        assertThatThrownBy(result::getVerticesToRestart)
                 .as("getVerticesToRestart is not allowed when restarting is suppressed")
                 .isInstanceOf(IllegalStateException.class);
 
-        assertThatThrownBy(() -> result.getRestartDelayMS())
+        assertThatThrownBy(result::getRestartDelayMS)
                 .as("getRestartDelayMS is not allowed when restarting is suppressed")
                 .isInstanceOf(IllegalStateException.class);
 
@@ -149,11 +149,11 @@ class ExecutionFailureHandlerTest {
         assertThat(ExecutionFailureHandler.isUnrecoverableError(result.getError())).isTrue();
         assertThat(result.getTimestamp()).isEqualTo(timestamp);
 
-        assertThatThrownBy(() -> result.getVerticesToRestart())
+        assertThatThrownBy(result::getVerticesToRestart)
                 .as("getVerticesToRestart is not allowed when restarting is suppressed")
                 .isInstanceOf(IllegalStateException.class);
 
-        assertThatThrownBy(() -> result.getRestartDelayMS())
+        assertThatThrownBy(result::getRestartDelayMS)
                 .as("getRestartDelayMS is not allowed when restarting is suppressed")
                 .isInstanceOf(IllegalStateException.class);
 

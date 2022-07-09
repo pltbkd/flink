@@ -64,7 +64,7 @@ class FailureHandlingResultTest {
         assertThat(tasks).isEqualTo(result.getVerticesToRestart());
         assertThat(result.getError()).isSameAs(error);
         assertThat(result.getTimestamp()).isEqualTo(timestamp);
-        assertThat(result.getFailedExecution().isPresent()).isTrue();
+        assertThat(result.getFailedExecution()).isPresent();
         assertThat(result.getFailedExecution().get()).isSameAs(execution);
     }
 
@@ -80,13 +80,13 @@ class FailureHandlingResultTest {
         assertThat(result.canRestart()).isFalse();
         assertThat(result.getError()).isSameAs(error);
         assertThat(result.getTimestamp()).isEqualTo(timestamp);
-        assertThat(result.getFailedExecution().isPresent()).isFalse();
+        assertThat(result.getFailedExecution()).isNotPresent();
 
-        assertThatThrownBy(() -> result.getVerticesToRestart())
+        assertThatThrownBy(result::getVerticesToRestart)
                 .as("getVerticesToRestart is not allowed when restarting is suppressed")
                 .isInstanceOf(IllegalStateException.class);
 
-        assertThatThrownBy(() -> result.getRestartDelayMS())
+        assertThatThrownBy(result::getRestartDelayMS)
                 .as("getRestartDelayMS is not allowed when restarting is suppressed")
                 .isInstanceOf(IllegalStateException.class);
     }
