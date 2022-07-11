@@ -44,6 +44,7 @@ import org.apache.flink.table.planner.plan.nodes.exec.ExecNode;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeBase;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeConfig;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeContext;
+import org.apache.flink.table.planner.plan.nodes.exec.InputProperty;
 import org.apache.flink.table.planner.plan.nodes.exec.MultipleTransformationTranslator;
 import org.apache.flink.table.planner.plan.nodes.exec.spec.DynamicTableSourceSpec;
 import org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecNode;
@@ -57,6 +58,7 @@ import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -80,6 +82,18 @@ public abstract class CommonExecTableSourceScan extends ExecNodeBase<RowData>
             LogicalType outputType,
             String description) {
         super(id, context, persistedConfig, Collections.emptyList(), outputType, description);
+        this.tableSourceSpec = tableSourceSpec;
+    }
+
+    protected CommonExecTableSourceScan(
+        int id,
+        ExecNodeContext context,
+        ReadableConfig persistedConfig,
+        DynamicTableSourceSpec tableSourceSpec,
+        LogicalType outputType,
+        String description,
+        List<InputProperty> inputProperties) {
+        super(id, context, persistedConfig, inputProperties, outputType, description);
         this.tableSourceSpec = tableSourceSpec;
     }
 

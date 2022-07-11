@@ -18,8 +18,10 @@
 package org.apache.flink.table.planner.plan.nodes.physical.batch
 
 import org.apache.calcite.plan._
+import org.apache.calcite.plan.hep.HepRelVertex
 import org.apache.calcite.rel.hint.RelHint
 import org.apache.calcite.rel.metadata.RelMetadataQuery
+import org.apache.calcite.rel.{RelNode, RelWriter}
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecTableSourceScan
@@ -29,6 +31,7 @@ import org.apache.flink.table.planner.plan.schema.TableSourceTable
 import org.apache.flink.table.planner.utils.ShortcutUtils.unwrapTableConfig
 
 import java.util
+import java.util.Collections
 
 /**
  * Batch physical RelNode to read data from an external source defined by a bounded
@@ -38,19 +41,51 @@ class BatchPhysicalTableSourceScan(
   cluster: RelOptCluster,
   traitSet: RelTraitSet,
   hints: util.List[RelHint],
-  tableSourceTable: TableSourceTable)
+  tableSourceTable: TableSourceTable,
+  var dppSink: RelNode = null)
   extends CommonPhysicalTableSourceScan(cluster, traitSet, hints, tableSourceTable)
     with BatchPhysicalRel {
 
   def copy(
     traitSet: RelTraitSet,
     tableSourceTable: TableSourceTable): BatchPhysicalTableSourceScan = {
-    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, tableSourceTable)
+    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, tableSourceTable, dppSink)
   }
 
   def copy(
-    newTableSourceTable: TableSourceTable): BatchPhysicalTableSourceScan = {
-    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, newTableSourceTable)
+    newTableSourceTable: TableSourceTable, newDppSink: BatchPhysicalDynamicPartitionSink): BatchPhysicalTableSourceScan = {
+    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, newTableSourceTable, newDppSink)
+  }
+
+  override def copy(traitSet: RelTraitSet, inputs: java.util.List[RelNode]): RelNode = {
+    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, tableSourceTable, if (inputs.size() == 0) null else inputs.get(0))
+  }
+
+  override def replaceInput(ordinalInParent: Int, p: RelNode): Unit = {
+    if (ordinalInParent == 0) {
+      dppSink = p
+    }
+  }
+
+  override def getInputs: util.List[RelNode] = {
+    if (dppSink == null) {
+      Collections.emptyList();
+    } else {
+      Collections.singletonList(dppSink)
+    }
+  }
+
+  override def getInput(i: Int): RelNode = {
+    if (dppSink == null || i != 0) {
+      null
+    } else {
+      dppSink
+    }
+  }
+
+  override def explainTerms(pw: RelWriter): RelWriter = {
+    pw.itemIf("dpp", dppSink, dppSink != null)
+    super.explainTerms(pw)
   }
 
   override def computeSelfCost(planner: RelOptPlanner, mq: RelMetadataQuery): RelOptCost = {
@@ -74,6 +109,7 @@ class BatchPhysicalTableSourceScan(
       unwrapTableConfig(this),
       tableSourceSpec,
       FlinkTypeFactory.toLogicalRowType(getRowType),
-      getRelDetailedDescription)
+      getRelDetailedDescription,
+      dppSink != null)
   }
 }

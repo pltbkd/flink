@@ -99,7 +99,7 @@ public class DynamicPartitionPruningRule4 extends DynamicPartitionPruningRuleBas
         final BatchPhysicalTableSourceScan factScan = call.rel(2);
         final RelNode dimSide = call.rel(3);
 
-        final BatchPhysicalDynamicPartitionPlaceholderFilter newFactScan =
+        final RelNode newFactScan =
                 createNewTableSourceScan(factScan, dimSide.getInput(0), join, true);
         final BatchPhysicalExchange newExchange =
                 (BatchPhysicalExchange)

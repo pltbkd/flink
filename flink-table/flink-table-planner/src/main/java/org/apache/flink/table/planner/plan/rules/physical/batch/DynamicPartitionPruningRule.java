@@ -394,7 +394,7 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
         return ImmutableIntList.of();
     }
 
-    private BatchPhysicalDynamicPartitionPlaceholderFilter createNewTableSourceScan(
+    private RelNode createNewTableSourceScan(
             BatchPhysicalTableSourceScan factScan,
             RelNode dimSide,
             ImmutableIntList partitionKeysInFactScan,
@@ -417,14 +417,7 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
         final BatchPhysicalDynamicPartitionSink dppSink =
                 createDynamicPartitionSink(dimSide, partitionKeysInDim.toIntArray());
 
-        TableScan tableScan = factScan.copy(newTable);
-
-        return new BatchPhysicalDynamicPartitionPlaceholderFilter(
-                tableScan.getCluster(),
-                tableScan.getTraitSet(),
-                dppSink,
-                tableScan,
-                tableScan.getRowType());
+        return factScan.copy(newTable, dppSink);
     }
 
     private BatchPhysicalDynamicPartitionSink createDynamicPartitionSink(
