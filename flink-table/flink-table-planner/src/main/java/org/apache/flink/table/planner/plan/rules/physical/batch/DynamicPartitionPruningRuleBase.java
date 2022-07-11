@@ -24,6 +24,7 @@ import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.abilities.SupportsDynamicPartitionPruning;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalCalc;
+import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicPartitionPlaceholderFilter;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicPartitionSink;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalJoinBase;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalTableSourceScan;
@@ -39,6 +40,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttle;
 import org.apache.calcite.rel.core.JoinInfo;
 import org.apache.calcite.rel.core.JoinRelType;
+import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
@@ -72,10 +74,8 @@ public abstract class DynamicPartitionPruningRuleBase extends RelRule<RelRule.Co
         if (!ShortcutUtils.unwrapContext(join).getTableConfig().get(TABLE_OPTIMIZER_DPP_ENABLED)) {
             return false;
         }
-//        if (factScan.dppSink() != null) {
-//            // rule applied
-//            return false;
-//        }
+
+        // If applied, the structure should not match the case here
 
         // TODO support more join types
         if (join.getJoinType() == JoinRelType.LEFT) {
@@ -123,7 +123,7 @@ public abstract class DynamicPartitionPruningRuleBase extends RelRule<RelRule.Co
         }
     }
 
-    protected BatchPhysicalTableSourceScan createNewTableSourceScan(
+    protected BatchPhysicalDynamicPartitionPlaceholderFilter createNewTableSourceScan(
             BatchPhysicalTableSourceScan factScan,
             RelNode dimSide,
             BatchPhysicalJoinBase join,
@@ -152,8 +152,14 @@ public abstract class DynamicPartitionPruningRuleBase extends RelRule<RelRule.Co
         final BatchPhysicalDynamicPartitionSink dppSink =
                 createDynamicPartitionSink(dimSide, dimPartitionFields);
 
-        // return factScan.copy(newTable);
-        return null;
+        TableScan tableScan = factScan.copy(newTable);
+
+        return new BatchPhysicalDynamicPartitionPlaceholderFilter(
+            tableScan.getCluster(),
+            tableScan.getTraitSet(),
+            dppSink,
+            tableScan,
+            tableScan.getRowType());
     }
 
     private BatchPhysicalDynamicPartitionSink createDynamicPartitionSink(

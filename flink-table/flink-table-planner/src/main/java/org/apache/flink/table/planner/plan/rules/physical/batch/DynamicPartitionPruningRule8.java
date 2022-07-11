@@ -19,6 +19,7 @@
 package org.apache.flink.table.planner.plan.rules.physical.batch;
 
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalCalc;
+import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicPartitionPlaceholderFilter;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalExchange;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalJoinBase;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalTableSourceScan;
@@ -103,7 +104,7 @@ public class DynamicPartitionPruningRule8 extends DynamicPartitionPruningRuleBas
         final BatchPhysicalTableSourceScan factScan = call.rel(3);
         final RelNode dimSide = call.rel(4);
 
-        final BatchPhysicalTableSourceScan newFactScan =
+        final BatchPhysicalDynamicPartitionPlaceholderFilter newFactScan =
                 createNewTableSourceScan(factScan, dimSide.getInput(0), join, true);
         final BatchPhysicalExchange newExchange =
                 (BatchPhysicalExchange)
