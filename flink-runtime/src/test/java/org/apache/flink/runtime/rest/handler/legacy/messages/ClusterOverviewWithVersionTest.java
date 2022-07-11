@@ -31,6 +31,6 @@ public class ClusterOverviewWithVersionTest
 
     @Override
     protected ClusterOverviewWithVersion getTestResponseInstance() {
-        return new ClusterOverviewWithVersion(1, 3, 3, 7, 4, 2, 0, "version", "commit");
+        return new ClusterOverviewWithVersion(1, 3, 3, 1, 0, 7, 4, 2, 0, "version", "commit");
     }
 }

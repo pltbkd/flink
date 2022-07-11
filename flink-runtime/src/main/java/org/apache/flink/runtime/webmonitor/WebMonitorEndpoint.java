@@ -79,6 +79,7 @@ import org.apache.flink.runtime.rest.handler.job.metrics.JobManagerMetricsHandle
 import org.apache.flink.runtime.rest.handler.job.metrics.JobMetricsHandler;
 import org.apache.flink.runtime.rest.handler.job.metrics.JobVertexMetricsHandler;
 import org.apache.flink.runtime.rest.handler.job.metrics.JobVertexWatermarksHandler;
+import org.apache.flink.runtime.rest.handler.job.metrics.SubtaskAttemptMetricsHandler;
 import org.apache.flink.runtime.rest.handler.job.metrics.SubtaskMetricsHandler;
 import org.apache.flink.runtime.rest.handler.job.metrics.TaskManagerMetricsHandler;
 import org.apache.flink.runtime.rest.handler.job.rescaling.RescalingHandlers;
@@ -495,6 +496,10 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
         final SubtaskMetricsHandler subtaskMetricsHandler =
                 new SubtaskMetricsHandler(leaderRetriever, timeout, responseHeaders, metricFetcher);
 
+        final SubtaskAttemptMetricsHandler subtaskAttemptMetricsHandler =
+                new SubtaskAttemptMetricsHandler(
+                        leaderRetriever, timeout, responseHeaders, metricFetcher);
+
         final TaskManagerMetricsHandler taskManagerMetricsHandler =
                 new TaskManagerMetricsHandler(
                         leaderRetriever, timeout, responseHeaders, metricFetcher);
@@ -751,6 +756,7 @@ public class WebMonitorEndpoint<T extends RestfulGateway> extends RestServerEndp
                         jobVertexWatermarksHandler));
         handlers.add(Tuple2.of(jobMetricsHandler.getMessageHeaders(), jobMetricsHandler));
         handlers.add(Tuple2.of(subtaskMetricsHandler.getMessageHeaders(), subtaskMetricsHandler));
+        handlers.add(Tuple2.of(subtaskAttemptMetricsHandler.getMessageHeaders(), subtaskAttemptMetricsHandler));
         handlers.add(
                 Tuple2.of(
                         taskManagerMetricsHandler.getMessageHeaders(), taskManagerMetricsHandler));

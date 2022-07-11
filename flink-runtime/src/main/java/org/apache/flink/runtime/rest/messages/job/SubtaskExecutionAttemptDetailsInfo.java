@@ -30,12 +30,16 @@ import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCreator;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonInclude;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonInclude.Include;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.swagger.v3.oas.annotations.Hidden;
 
 import javax.annotation.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -65,6 +69,8 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
     public static final String FIELD_NAME_TASKMANAGER_ID = "taskmanager-id";
 
     public static final String FIELD_NAME_STATUS_DURATION = "status-duration";
+
+    public static final String FIELD_NAME_OTHER_CONCURRENT_ATTEMPTS = "other-concurrent-attempts";
 
     @JsonProperty(FIELD_NAME_SUBTASK_INDEX)
     private final int subtaskIndex;
@@ -100,6 +106,36 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
     @JsonProperty(FIELD_NAME_STATUS_DURATION)
     private final Map<ExecutionState, Long> statusDuration;
 
+    @JsonProperty(FIELD_NAME_OTHER_CONCURRENT_ATTEMPTS)
+    @JsonInclude(Include.NON_EMPTY)
+    @Nullable
+    private final List<SubtaskExecutionAttemptDetailsInfo> otherConcurrentAttempts;
+
+    public SubtaskExecutionAttemptDetailsInfo(
+            int subtaskIndex,
+            ExecutionState status,
+            int attempt,
+            String host,
+            long startTime,
+            long endTime,
+            long duration,
+            IOMetricsInfo ioMetricsInfo,
+            String taskmanagerId,
+            Map<ExecutionState, Long> statusDuration) {
+        this(
+                subtaskIndex,
+                status,
+                attempt,
+                host,
+                startTime,
+                endTime,
+                duration,
+                ioMetricsInfo,
+                taskmanagerId,
+                statusDuration,
+                null);
+    }
+
     @JsonCreator
     public SubtaskExecutionAttemptDetailsInfo(
             @JsonProperty(FIELD_NAME_SUBTASK_INDEX) int subtaskIndex,
@@ -111,7 +147,9 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
             @JsonProperty(FIELD_NAME_DURATION) long duration,
             @JsonProperty(FIELD_NAME_METRICS) IOMetricsInfo ioMetricsInfo,
             @JsonProperty(FIELD_NAME_TASKMANAGER_ID) String taskmanagerId,
-            @JsonProperty(FIELD_NAME_STATUS_DURATION) Map<ExecutionState, Long> statusDuration) {
+            @JsonProperty(FIELD_NAME_STATUS_DURATION) Map<ExecutionState, Long> statusDuration,
+            @JsonProperty(FIELD_NAME_OTHER_CONCURRENT_ATTEMPTS) @Nullable
+                    List<SubtaskExecutionAttemptDetailsInfo> otherConcurrentAttempts) {
 
         this.subtaskIndex = subtaskIndex;
         this.status = Preconditions.checkNotNull(status);
@@ -124,6 +162,7 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
         this.ioMetricsInfo = Preconditions.checkNotNull(ioMetricsInfo);
         this.taskmanagerId = Preconditions.checkNotNull(taskmanagerId);
         this.statusDuration = Preconditions.checkNotNull(statusDuration);
+        this.otherConcurrentAttempts = otherConcurrentAttempts;
     }
 
     public int getSubtaskIndex() {
@@ -174,6 +213,10 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
         return taskmanagerId;
     }
 
+    public List<SubtaskExecutionAttemptDetailsInfo> getOtherConcurrentAttempts() {
+        return otherConcurrentAttempts == null ? new ArrayList<>() : otherConcurrentAttempts;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -195,7 +238,8 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
                 && duration == that.duration
                 && Objects.equals(ioMetricsInfo, that.ioMetricsInfo)
                 && Objects.equals(taskmanagerId, that.taskmanagerId)
-                && Objects.equals(statusDuration, that.statusDuration);
+                && Objects.equals(statusDuration, that.statusDuration)
+                && Objects.equals(otherConcurrentAttempts, that.otherConcurrentAttempts);
     }
 
     @Override
@@ -211,14 +255,16 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
                 duration,
                 ioMetricsInfo,
                 taskmanagerId,
-                statusDuration);
+                statusDuration,
+                otherConcurrentAttempts);
     }
 
     public static SubtaskExecutionAttemptDetailsInfo create(
             AccessExecution execution,
             @Nullable MetricFetcher metricFetcher,
             JobID jobID,
-            JobVertexID jobVertexID) {
+            JobVertexID jobVertexID,
+            @Nullable List<SubtaskExecutionAttemptDetailsInfo> otherConcurrentAttempts) {
         final ExecutionState status = execution.getState();
         final long now = System.currentTimeMillis();
 
@@ -261,6 +307,7 @@ public class SubtaskExecutionAttemptDetailsInfo implements ResponseBody {
                 duration,
                 ioMetricsInfo,
                 taskmanagerId,
-                getExecutionStateDuration(execution));
+                getExecutionStateDuration(execution),
+                otherConcurrentAttempts);
     }
 }

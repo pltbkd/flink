@@ -614,6 +614,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
             final ResourceID resourceId = taskExecutorEntry.getKey();
             final WorkerRegistration<WorkerType> taskExecutor = taskExecutorEntry.getValue();
 
+            // TODO set the actual blocked state
             taskManagerInfos.add(
                     new TaskManagerInfo(
                             resourceId,
@@ -626,7 +627,8 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                             slotManager.getRegisteredResourceOf(taskExecutor.getInstanceID()),
                             slotManager.getFreeResourceOf(taskExecutor.getInstanceID()),
                             taskExecutor.getHardwareDescription(),
-                            taskExecutor.getMemoryConfiguration()));
+                            taskExecutor.getMemoryConfiguration(),
+                            false));
         }
 
         return CompletableFuture.completedFuture(taskManagerInfos);
@@ -642,6 +644,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
             return FutureUtils.completedExceptionally(new UnknownTaskExecutorException(resourceId));
         } else {
             final InstanceID instanceId = taskExecutor.getInstanceID();
+            // TODO set the actual blocked state
             final TaskManagerInfoWithSlots taskManagerInfoWithSlots =
                     new TaskManagerInfoWithSlots(
                             new TaskManagerInfo(
@@ -655,7 +658,8 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                                     slotManager.getRegisteredResourceOf(instanceId),
                                     slotManager.getFreeResourceOf(instanceId),
                                     taskExecutor.getHardwareDescription(),
-                                    taskExecutor.getMemoryConfiguration()),
+                                    taskExecutor.getMemoryConfiguration(),
+                                    false),
                             slotManager.getAllocatedSlotsOf(instanceId));
 
             return CompletableFuture.completedFuture(taskManagerInfoWithSlots);
@@ -669,11 +673,14 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
         final ResourceProfile totalResource = slotManager.getRegisteredResource();
         final ResourceProfile freeResource = slotManager.getFreeResource();
 
+        // TODO set the actual blocked tm and slot count
         return CompletableFuture.completedFuture(
                 new ResourceOverview(
                         taskExecutors.size(),
                         numberSlots,
                         numberFreeSlots,
+                        0,
+                        0,
                         totalResource,
                         freeResource));
     }

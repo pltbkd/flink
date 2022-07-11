@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.execution.ExecutionState;
+import org.apache.flink.runtime.executiongraph.AccessExecution;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.executiongraph.AccessExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.AccessExecutionVertex;
@@ -202,11 +203,13 @@ public class JobDetailsHandler
         MutableIOMetrics counts = new MutableIOMetrics();
 
         for (AccessExecutionVertex vertex : ejv.getTaskVertices()) {
-            counts.addIOMetrics(
-                    vertex.getCurrentExecutionAttempt(),
-                    metricFetcher,
-                    jobId.toString(),
-                    ejv.getJobVertexId().toString());
+            for (AccessExecution execution : vertex.getCurrentExecutions()) {
+                counts.addIOMetrics(
+                        execution,
+                        metricFetcher,
+                        jobId.toString(),
+                        ejv.getJobVertexId().toString());
+            }
         }
 
         final IOMetricsInfo jobVertexMetrics =

@@ -20,6 +20,7 @@ package org.apache.flink.runtime.rest.handler.job;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.execution.ExecutionState;
+import org.apache.flink.runtime.executiongraph.AccessExecution;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.executiongraph.AccessExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.AccessExecutionVertex;
@@ -99,29 +100,33 @@ public class SubtasksTimesHandler
         final long now = System.currentTimeMillis();
         final List<SubtasksTimesInfo.SubtaskTimeInfo> subtasks = new ArrayList<>();
 
-        int num = 0;
         for (AccessExecutionVertex vertex : jobVertex.getTaskVertices()) {
+            for (AccessExecution execution : vertex.getCurrentExecutions()) {
+                long[] timestamps = execution.getStateTimestamps();
+                ExecutionState status = execution.getState();
 
-            long[] timestamps = vertex.getCurrentExecutionAttempt().getStateTimestamps();
-            ExecutionState status = vertex.getExecutionState();
+                long scheduledTime = timestamps[ExecutionState.SCHEDULED.ordinal()];
 
-            long scheduledTime = timestamps[ExecutionState.SCHEDULED.ordinal()];
+                long start = scheduledTime > 0 ? scheduledTime : -1;
+                long end = status.isTerminal() ? timestamps[status.ordinal()] : now;
+                long duration = start >= 0 ? end - start : -1L;
 
-            long start = scheduledTime > 0 ? scheduledTime : -1;
-            long end = status.isTerminal() ? timestamps[status.ordinal()] : now;
-            long duration = start >= 0 ? end - start : -1L;
+                TaskManagerLocation location = execution.getAssignedResourceLocation();
+                String locationString = location == null ? "(unassigned)" : location.getHostname();
 
-            TaskManagerLocation location = vertex.getCurrentAssignedResourceLocation();
-            String locationString = location == null ? "(unassigned)" : location.getHostname();
+                Map<ExecutionState, Long> timestampMap =
+                        new HashMap<>(ExecutionState.values().length);
+                for (ExecutionState state : ExecutionState.values()) {
+                    timestampMap.put(state, timestamps[state.ordinal()]);
+                }
 
-            Map<ExecutionState, Long> timestampMap = new HashMap<>(ExecutionState.values().length);
-            for (ExecutionState state : ExecutionState.values()) {
-                timestampMap.put(state, timestamps[state.ordinal()]);
+                subtasks.add(
+                        new SubtasksTimesInfo.SubtaskTimeInfo(
+                                execution.getParallelSubtaskIndex(),
+                                locationString,
+                                duration,
+                                timestampMap));
             }
-
-            subtasks.add(
-                    new SubtasksTimesInfo.SubtaskTimeInfo(
-                            num++, locationString, duration, timestampMap));
         }
         return new SubtasksTimesInfo(id, name, now, subtasks);
     }

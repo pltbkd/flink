@@ -26,6 +26,8 @@ import org.apache.flink.util.Preconditions;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCreator;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
 
+import javax.annotation.Nullable;
+
 import java.util.Objects;
 
 /** Cluster overview message including the current Flink version and commit id. */
@@ -47,6 +49,8 @@ public class ClusterOverviewWithVersion extends ClusterOverview implements Respo
             @JsonProperty(FIELD_NAME_TASKMANAGERS) int numTaskManagersConnected,
             @JsonProperty(FIELD_NAME_SLOTS_TOTAL) int numSlotsTotal,
             @JsonProperty(FIELD_NAME_SLOTS_AVAILABLE) int numSlotsAvailable,
+            @JsonProperty(FIELD_NAME_TASKMANAGERS_BLOCKED) @Nullable Integer numTaskManagersBlocked,
+            @JsonProperty(FIELD_NAME_SLOTS_BLOCKED) @Nullable Integer numSlotsBlocked,
             @JsonProperty(FIELD_NAME_JOBS_RUNNING) int numJobsRunningOrPending,
             @JsonProperty(FIELD_NAME_JOBS_FINISHED) int numJobsFinished,
             @JsonProperty(FIELD_NAME_JOBS_CANCELLED) int numJobsCancelled,
@@ -57,6 +61,8 @@ public class ClusterOverviewWithVersion extends ClusterOverview implements Respo
                 numTaskManagersConnected,
                 numSlotsTotal,
                 numSlotsAvailable,
+                numTaskManagersBlocked,
+                numSlotsBlocked,
                 numJobsRunningOrPending,
                 numJobsFinished,
                 numJobsCancelled,
@@ -70,11 +76,20 @@ public class ClusterOverviewWithVersion extends ClusterOverview implements Respo
             int numTaskManagersConnected,
             int numSlotsTotal,
             int numSlotsAvailable,
+            int numTaskManagersBlocked,
+            int numSlotsBlocked,
             JobsOverview jobs1,
             JobsOverview jobs2,
             String version,
             String commitId) {
-        super(numTaskManagersConnected, numSlotsTotal, numSlotsAvailable, jobs1, jobs2);
+        super(
+                numTaskManagersConnected,
+                numSlotsTotal,
+                numSlotsAvailable,
+                numTaskManagersBlocked,
+                numSlotsBlocked,
+                jobs1,
+                jobs2);
 
         this.version = Preconditions.checkNotNull(version);
         this.commitId = Preconditions.checkNotNull(commitId);
@@ -86,6 +101,8 @@ public class ClusterOverviewWithVersion extends ClusterOverview implements Respo
                 statusOverview.getNumTaskManagersConnected(),
                 statusOverview.getNumSlotsTotal(),
                 statusOverview.getNumSlotsAvailable(),
+                statusOverview.getNumTaskManagersBlocked(),
+                statusOverview.getNumSlotsBlocked(),
                 statusOverview.getNumJobsRunningOrPending(),
                 statusOverview.getNumJobsFinished(),
                 statusOverview.getNumJobsCancelled(),

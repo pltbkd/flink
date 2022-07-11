@@ -19,21 +19,28 @@
 package org.apache.flink.runtime.messages.webmonitor;
 
 import org.apache.flink.runtime.resourcemanager.ResourceOverview;
+import org.apache.flink.runtime.rest.messages.ResponseBody;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCreator;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonInclude;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonInclude.Include;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
+
+import javax.annotation.Nullable;
 
 /**
  * Response to the {@link RequestStatusOverview} message, carrying a description of the Flink
  * cluster status.
  */
-public class ClusterOverview extends JobsOverview {
+public class ClusterOverview extends JobsOverview implements ResponseBody {
 
     private static final long serialVersionUID = -729861859715105265L;
 
     public static final String FIELD_NAME_TASKMANAGERS = "taskmanagers";
     public static final String FIELD_NAME_SLOTS_TOTAL = "slots-total";
     public static final String FIELD_NAME_SLOTS_AVAILABLE = "slots-available";
+    public static final String FIELD_NAME_TASKMANAGERS_BLOCKED = "taskmanagers-blocked";
+    public static final String FIELD_NAME_SLOTS_BLOCKED = "slots-blocked";
 
     @JsonProperty(FIELD_NAME_TASKMANAGERS)
     private final int numTaskManagersConnected;
@@ -44,11 +51,21 @@ public class ClusterOverview extends JobsOverview {
     @JsonProperty(FIELD_NAME_SLOTS_AVAILABLE)
     private final int numSlotsAvailable;
 
+    @JsonProperty(FIELD_NAME_TASKMANAGERS_BLOCKED)
+    @JsonInclude(Include.NON_DEFAULT)
+    private final int numTaskManagersBlocked;
+
+    @JsonProperty(FIELD_NAME_SLOTS_BLOCKED)
+    @JsonInclude(Include.NON_DEFAULT)
+    private final int numSlotsBlocked;
+
     @JsonCreator
     public ClusterOverview(
             @JsonProperty(FIELD_NAME_TASKMANAGERS) int numTaskManagersConnected,
             @JsonProperty(FIELD_NAME_SLOTS_TOTAL) int numSlotsTotal,
             @JsonProperty(FIELD_NAME_SLOTS_AVAILABLE) int numSlotsAvailable,
+            @JsonProperty(FIELD_NAME_TASKMANAGERS_BLOCKED) @Nullable Integer numTaskManagersBlocked,
+            @JsonProperty(FIELD_NAME_SLOTS_BLOCKED) @Nullable Integer numSlotsBlocked,
             @JsonProperty(FIELD_NAME_JOBS_RUNNING) int numJobsRunningOrPending,
             @JsonProperty(FIELD_NAME_JOBS_FINISHED) int numJobsFinished,
             @JsonProperty(FIELD_NAME_JOBS_CANCELLED) int numJobsCancelled,
@@ -59,18 +76,24 @@ public class ClusterOverview extends JobsOverview {
         this.numTaskManagersConnected = numTaskManagersConnected;
         this.numSlotsTotal = numSlotsTotal;
         this.numSlotsAvailable = numSlotsAvailable;
+        this.numTaskManagersBlocked = numTaskManagersBlocked == null ? 0 : numTaskManagersBlocked;
+        this.numSlotsBlocked = numSlotsBlocked == null ? 0 : numSlotsBlocked;
     }
 
     public ClusterOverview(
             int numTaskManagersConnected,
             int numSlotsTotal,
             int numSlotsAvailable,
+            @Nullable Integer numTaskManagersBlocked,
+            @Nullable Integer numSlotsBlocked,
             JobsOverview jobs1,
             JobsOverview jobs2) {
         super(jobs1, jobs2);
         this.numTaskManagersConnected = numTaskManagersConnected;
         this.numSlotsTotal = numSlotsTotal;
         this.numSlotsAvailable = numSlotsAvailable;
+        this.numTaskManagersBlocked = numTaskManagersBlocked == null ? 0 : numTaskManagersBlocked;
+        this.numSlotsBlocked = numSlotsBlocked == null ? 0 : numSlotsBlocked;
     }
 
     public ClusterOverview(ResourceOverview resourceOverview, JobsOverview jobsOverview) {
@@ -78,6 +101,8 @@ public class ClusterOverview extends JobsOverview {
                 resourceOverview.getNumberTaskManagers(),
                 resourceOverview.getNumberRegisteredSlots(),
                 resourceOverview.getNumberFreeSlots(),
+                resourceOverview.getNumberBlockedTaskManagaers(),
+                resourceOverview.getNumberBlockedSlots(),
                 jobsOverview.getNumJobsRunningOrPending(),
                 jobsOverview.getNumJobsFinished(),
                 jobsOverview.getNumJobsCancelled(),
@@ -96,6 +121,13 @@ public class ClusterOverview extends JobsOverview {
         return numSlotsAvailable;
     }
 
+    public int getNumTaskManagersBlocked() {
+        return numTaskManagersBlocked;
+    }
+
+    public int getNumSlotsBlocked() {
+        return numSlotsBlocked;
+    }
     // ------------------------------------------------------------------------
 
     @Override

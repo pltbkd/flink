@@ -28,13 +28,17 @@ public class ResourceOverview implements Serializable {
     private static final long serialVersionUID = 7618746920569224557L;
 
     private static final ResourceOverview EMPTY_RESOURCE_OVERVIEW =
-            new ResourceOverview(0, 0, 0, ResourceProfile.ZERO, ResourceProfile.ZERO);
+            new ResourceOverview(0, 0, 0, 0, 0, ResourceProfile.ZERO, ResourceProfile.ZERO);
 
     private final int numberTaskManagers;
 
     private final int numberRegisteredSlots;
 
     private final int numberFreeSlots;
+
+    private final int numberBlockedTaskManagaers;
+
+    private final int numberBlockedSlots;
 
     private final ResourceProfile totalResource;
 
@@ -44,11 +48,15 @@ public class ResourceOverview implements Serializable {
             int numberTaskManagers,
             int numberRegisteredSlots,
             int numberFreeSlots,
+            int numberBlockedTaskManagaers,
+            int numberBlockedSlots,
             ResourceProfile totalResource,
             ResourceProfile freeResource) {
         this.numberTaskManagers = numberTaskManagers;
         this.numberRegisteredSlots = numberRegisteredSlots;
         this.numberFreeSlots = numberFreeSlots;
+        this.numberBlockedTaskManagaers = numberBlockedTaskManagaers;
+        this.numberBlockedSlots = numberBlockedSlots;
         this.totalResource = totalResource;
         this.freeResource = freeResource;
     }
@@ -63,6 +71,14 @@ public class ResourceOverview implements Serializable {
 
     public int getNumberFreeSlots() {
         return numberFreeSlots;
+    }
+
+    public int getNumberBlockedTaskManagaers() {
+        return numberBlockedTaskManagaers;
+    }
+
+    public int getNumberBlockedSlots() {
+        return numberBlockedSlots;
     }
 
     public ResourceProfile getTotalResource() {
