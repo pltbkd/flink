@@ -75,7 +75,10 @@ public abstract class DynamicPartitionPruningRuleBase extends RelRule<RelRule.Co
             return false;
         }
 
-        // If applied, the structure should not match the case here
+        // Must have this...
+        if (factScan.dppSink() != null) {
+            return false;
+        }
 
         // TODO support more join types
         if (join.getJoinType() == JoinRelType.LEFT) {
