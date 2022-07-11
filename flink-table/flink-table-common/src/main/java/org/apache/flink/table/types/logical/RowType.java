@@ -167,7 +167,12 @@ public final class RowType extends LogicalType {
     }
 
     public List<String> getFieldNames() {
-        return fields.stream().map(RowField::getName).collect(Collectors.toList());
+        List<String> result = new ArrayList<>();
+        for (RowField field : fields) {
+            result.add(field.getName());
+        }
+        return result;
+        // return fields.stream().map(RowField::getName).collect(Collectors.toList());
     }
 
     public LogicalType getTypeAt(int i) {
