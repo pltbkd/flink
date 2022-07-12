@@ -21,6 +21,7 @@ package org.apache.flink.table.runtime.operators.dpp;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.operators.coordination.OperatorEventDispatcher;
+import org.apache.flink.runtime.operators.coordination.OperatorEventGateway;
 import org.apache.flink.streaming.api.operators.CoordinatedOperatorFactory;
 import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.operators.StreamOperator;
@@ -28,6 +29,7 @@ import org.apache.flink.streaming.api.operators.StreamOperatorParameters;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.types.logical.RowType;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -35,27 +37,35 @@ import java.util.concurrent.CompletableFuture;
 public class DynamicPartitionOperatorFactory extends SimpleOperatorFactory<Object>
         implements CoordinatedOperatorFactory<Object> {
 
-    private final transient CompletableFuture<byte[]> sourceOperatorIdFuture;
-    private OperatorID sourceOperatorId;
+    private final transient List<CompletableFuture<byte[]>> sourceOperatorIdFutures;
+    private List<OperatorID> sourceOperatorIds = new ArrayList<>();
     private final DynamicPartitionOperator operator;
 
     public DynamicPartitionOperatorFactory(
-            CompletableFuture<byte[]> sourceOperatorIdFuture,
+            List<CompletableFuture<byte[]>> sourceOperatorIdFutures,
             RowType partitionFieldType,
             List<Integer> partitionFieldIndices) {
         super(new DynamicPartitionOperator(partitionFieldType, partitionFieldIndices));
         this.operator = (DynamicPartitionOperator) getOperator();
-        this.sourceOperatorIdFuture = sourceOperatorIdFuture;
+        this.sourceOperatorIdFutures = sourceOperatorIdFutures;
     }
 
     @Override
     public <T extends StreamOperator<Object>> T createStreamOperator(
             StreamOperatorParameters<Object> parameters) {
         final OperatorEventDispatcher eventDispatcher = parameters.getOperatorEventDispatcher();
-        if (sourceOperatorId == null) {
-            throw new TableException("sourceOperatorId is empty");
-        }
-        operator.setOperatorEventGateway(eventDispatcher.getOperatorEventGateway(sourceOperatorId));
+
+        List<OperatorEventGateway> gateways = new ArrayList<>();
+        sourceOperatorIds.forEach(
+                sourceOperatorId -> {
+                    if (sourceOperatorId == null) {
+                        throw new TableException("sourceOperatorId is empty");
+                    }
+
+                    gateways.add(eventDispatcher.getOperatorEventGateway(sourceOperatorId));
+                });
+
+        operator.setOperatorEventGateways(gateways);
 
         operator.setup(
                 parameters.getContainingTask(),
@@ -72,11 +82,16 @@ public class DynamicPartitionOperatorFactory extends SimpleOperatorFactory<Objec
     @Override
     public OperatorCoordinator.Provider getCoordinatorProvider(
             String operatorName, OperatorID operatorID) {
-        byte[] sourceOperatorIdBytes = sourceOperatorIdFuture.getNow(null);
-        if (sourceOperatorIdBytes == null) {
-            throw new TableException("sourceOperatorId is empty");
-        }
-        sourceOperatorId = new OperatorID(sourceOperatorIdBytes);
+
+        sourceOperatorIdFutures.forEach(
+                sourceOperatorIdFuture -> {
+                    byte[] sourceOperatorIdBytes = sourceOperatorIdFuture.getNow(null);
+                    if (sourceOperatorIdBytes == null) {
+                        throw new TableException("sourceOperatorId is empty");
+                    }
+                    sourceOperatorIds.add(new OperatorID(sourceOperatorIdBytes));
+                });
+
         return new DynamicPartitionOperatorCoordinator.Provider(operatorID);
     }
 }

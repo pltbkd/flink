@@ -33,6 +33,7 @@ import org.apache.flink.table.runtime.operators.dpp.DynamicPartitionOperatorFact
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.types.logical.RowType;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -44,7 +45,7 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
         implements BatchExecNode<Object> {
 
     private final List<Integer> partitionFields;
-    private transient CompletableFuture<byte[]> sourceOperatorIdFuture;
+    private transient List<CompletableFuture<byte[]>> sourceOperatorIdFutures = new ArrayList<>();
 
     public BatchExecDynamicPartitionSink(
             List<Integer> partitionFields,
@@ -63,8 +64,8 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
         checkArgument(outputType.getFieldCount() == partitionFields.size());
     }
 
-    public void setSourceOperatorIdFuture(CompletableFuture<byte[]> sourceOperatorIdFuture) {
-        this.sourceOperatorIdFuture = sourceOperatorIdFuture;
+    public void addSourceOperatorIdFuture(CompletableFuture<byte[]> sourceOperatorIdFuture) {
+        this.sourceOperatorIdFutures.add(sourceOperatorIdFuture);
     }
 
     @Override
@@ -76,7 +77,7 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
                 (Transformation<RowData>) inputEdge.translateToPlan(planner);
         SimpleOperatorFactory<Object> factory =
                 new DynamicPartitionOperatorFactory(
-                        sourceOperatorIdFuture, (RowType) getOutputType(), partitionFields);
+                        sourceOperatorIdFutures, (RowType) getOutputType(), partitionFields);
 
         return ExecNodeUtil.createOneInputTransformation(
                 inputTransform,

@@ -24,7 +24,6 @@ import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.abilities.SupportsDynamicPartitionPruning;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
-import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicPartitionPlaceholderFilter;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicPartitionSink;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalJoinBase;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalTableSourceScan;
@@ -103,8 +102,13 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
         RelNode right = join.getRight();
 
         // Has applied
-        if (left instanceof BatchPhysicalDynamicPartitionPlaceholderFilter
-                || right instanceof BatchPhysicalDynamicPartitionPlaceholderFilter) {
+        if (left instanceof BatchPhysicalTableSourceScan
+                && ((BatchPhysicalTableSourceScan) left).dppSink() != null) {
+            return false;
+        }
+
+        if (right instanceof BatchPhysicalTableSourceScan
+                && ((BatchPhysicalTableSourceScan) right).dppSink() != null) {
             return false;
         }
 

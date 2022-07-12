@@ -88,7 +88,7 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
 
         BatchExecDynamicPartitionSink sink =
                 (BatchExecDynamicPartitionSink) edges.get(0).getSource();
-        sink.setSourceOperatorIdFuture(sourceOperatorIdFuture);
+        sink.addSourceOperatorIdFuture(sourceOperatorIdFuture);
         Transformation<Object> dppTransformation = sink.translateToPlan(planner);
 
         MultipleInputTransformation<RowData> multipleInputTransformation =

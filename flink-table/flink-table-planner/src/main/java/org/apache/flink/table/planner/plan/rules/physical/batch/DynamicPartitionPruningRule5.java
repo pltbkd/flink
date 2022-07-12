@@ -19,7 +19,6 @@
 package org.apache.flink.table.planner.plan.rules.physical.batch;
 
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalCalc;
-import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicPartitionPlaceholderFilter;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalExchange;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalJoinBase;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalTableSourceScan;

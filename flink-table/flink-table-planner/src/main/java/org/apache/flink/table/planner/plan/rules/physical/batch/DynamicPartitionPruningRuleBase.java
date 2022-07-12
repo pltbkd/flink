@@ -24,7 +24,6 @@ import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.abilities.SupportsDynamicPartitionPruning;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalCalc;
-import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicPartitionPlaceholderFilter;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicPartitionSink;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalJoinBase;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalTableSourceScan;
