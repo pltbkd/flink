@@ -20,6 +20,7 @@ package org.apache.flink.table.planner.plan.nodes.exec.batch;
 
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.configuration.ReadableConfig;
+import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.planner.delegation.PlannerBase;
@@ -78,6 +79,7 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
         SimpleOperatorFactory<Object> factory =
                 new DynamicPartitionOperatorFactory(
                         sourceOperatorIdFutures, (RowType) getOutputType(), partitionFields);
+        factory.setChainingStrategy(ChainingStrategy.ALWAYS);
 
         return ExecNodeUtil.createOneInputTransformation(
                 inputTransform,
