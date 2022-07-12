@@ -123,7 +123,6 @@ public class SourceOperatorFactory<OUT> extends AbstractStreamOperatorFactory<OU
     @Override
     public OperatorCoordinator.Provider getCoordinatorProvider(
             String operatorName, OperatorID operatorID) {
-        source.getOperatorIdFuture().complete(operatorID.getBytes());
         return new SourceCoordinatorProvider<>(
                 operatorName,
                 operatorID,

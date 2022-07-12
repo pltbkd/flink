@@ -23,13 +23,17 @@ import org.apache.flink.connector.file.src.assigners.FileSplitAssigner;
 import org.apache.flink.connector.file.src.enumerate.DynamicFileEnumerator;
 import org.apache.flink.connector.file.src.impl.DynamicFileSplitEnumerator;
 import org.apache.flink.connectors.hive.read.HiveSourceSplit;
+import org.apache.flink.table.connector.source.PartitionData;
+
+import java.util.concurrent.CompletableFuture;
 
 /** HiveDynamicFileSplitEnumerator. */
 public class HiveDynamicFileSplitEnumerator extends DynamicFileSplitEnumerator<HiveSourceSplit> {
     public HiveDynamicFileSplitEnumerator(
             SplitEnumeratorContext<HiveSourceSplit> context,
             DynamicFileEnumerator.Provider fileEnumeratorFactory,
-            FileSplitAssigner.Provider splitAssignerFactory) {
-        super(context, fileEnumeratorFactory, splitAssignerFactory);
+            FileSplitAssigner.Provider splitAssignerFactory,
+            CompletableFuture<PartitionData> partitionDataFuture) {
+        super(context, fileEnumeratorFactory, splitAssignerFactory, partitionDataFuture);
     }
 }

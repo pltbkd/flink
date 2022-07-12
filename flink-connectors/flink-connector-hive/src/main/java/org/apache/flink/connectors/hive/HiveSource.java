@@ -31,7 +31,10 @@ import org.apache.flink.connector.file.table.ContinuousPartitionFetcher;
 import org.apache.flink.connectors.hive.read.HiveSourceSplit;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.runtime.operators.coordination.CoordinatorStore;
+import org.apache.flink.runtime.source.coordinator.CrossCoordinatingSource;
 import org.apache.flink.table.catalog.ObjectPath;
+import org.apache.flink.table.connector.source.PartitionData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.util.Preconditions;
 
@@ -55,7 +58,8 @@ import java.util.concurrent.CompletableFuture;
  * @param <T> the type of record returned by this source
  */
 @PublicEvolving
-public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
+public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit>
+        implements CrossCoordinatingSource {
 
     private static final long serialVersionUID = 1L;
 
@@ -67,12 +71,15 @@ public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
     private final ContinuousPartitionFetcher<Partition, ?> fetcher;
     private final HiveTableSource.HiveContinuousPartitionFetcherContext<?> fetcherContext;
     private final ObjectPath tablePath;
-    private final transient CompletableFuture<byte[]> operatorIdFuture;
+
+    private String coordinatingMailboxID;
+    private transient CoordinatorStore coordinatorStore;
 
     HiveSource(
             Path[] inputPaths,
             List<String> dynamicPartitionKeys,
             List<HiveTablePartition> partitions,
+            String coordinatingMailboxID,
             FileSplitAssigner.Provider splitAssigner,
             BulkFormat<T, HiveSourceSplit> readerFormat,
             @Nullable ContinuousEnumerationSettings continuousEnumerationSettings,
@@ -101,14 +108,9 @@ public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
         this.partitionKeys = partitionKeys;
         this.dynamicPartitionKeys = dynamicPartitionKeys;
         this.partitions = partitions;
+        this.coordinatingMailboxID = coordinatingMailboxID;
         this.fetcher = fetcher;
         this.fetcherContext = fetcherContext;
-        this.operatorIdFuture = new CompletableFuture<>();
-    }
-
-    @Override
-    public CompletableFuture<byte[]> getOperatorIdFuture() {
-        return operatorIdFuture;
     }
 
     @Override
@@ -187,8 +189,18 @@ public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
                 fetcherContext);
     }
 
-    private SplitEnumerator<HiveSourceSplit, PendingSplitsCheckpoint<HiveSourceSplit>>
-            createDynamicSplitEnumerator(SplitEnumeratorContext<HiveSourceSplit> enumContext) {
+    @SuppressWarnings("unchecked")
+    private HiveDynamicFileSplitEnumerator createDynamicSplitEnumerator(
+            SplitEnumeratorContext<HiveSourceSplit> enumContext) {
+        assert coordinatingMailboxID != null;
+        CompletableFuture<PartitionData> partitionDataFuture;
+        synchronized (coordinatorStore) {
+            coordinatorStore.putIfAbsent(
+                    coordinatingMailboxID, new CompletableFuture<PartitionData>());
+            partitionDataFuture =
+                    (CompletableFuture<PartitionData>) coordinatorStore.get(coordinatingMailboxID);
+        }
+
         return new HiveDynamicFileSplitEnumerator(
                 enumContext,
                 new HiveSourceDynamicFileEnumerator.Provider(
@@ -197,6 +209,12 @@ public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
                         partitions,
                         threadNum,
                         jobConfWrapper),
-                getAssignerFactory());
+                getAssignerFactory(),
+                partitionDataFuture);
+    }
+
+    @Override
+    public void setCoordinatorStore(CoordinatorStore coordinatorStore) {
+        this.coordinatorStore = coordinatorStore;
     }
 }

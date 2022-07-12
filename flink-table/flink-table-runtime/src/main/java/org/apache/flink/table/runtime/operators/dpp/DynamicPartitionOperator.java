@@ -19,11 +19,9 @@
 package org.apache.flink.table.runtime.operators.dpp;
 
 import org.apache.flink.runtime.operators.coordination.OperatorEventGateway;
-import org.apache.flink.runtime.source.event.SourceEventWrapper;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.table.connector.source.DynamicPartitionEvent;
 import org.apache.flink.table.connector.source.PartitionData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.logical.LogicalType;
@@ -39,25 +37,23 @@ public class DynamicPartitionOperator extends AbstractStreamOperator<Object>
 
     private final RowType partitionFieldType;
     private final List<Integer> partitionFieldIndices;
+    private final OperatorEventGateway operatorEventGateway;
+
     private transient List<Row> buffer;
 
-    /** The event gateway through which this operator talks to its coordinator. */
-    private transient OperatorEventGateway operatorEventGateway;
-
     public DynamicPartitionOperator(
-            RowType partitionFieldType, List<Integer> partitionFieldIndices) {
+            RowType partitionFieldType,
+            List<Integer> partitionFieldIndices,
+            OperatorEventGateway operatorEventGateway) {
         this.partitionFieldType = partitionFieldType;
         this.partitionFieldIndices = partitionFieldIndices;
+        this.operatorEventGateway = operatorEventGateway;
     }
 
     @Override
     public void open() throws Exception {
         super.open();
         this.buffer = new ArrayList<>();
-    }
-
-    public void setOperatorEventGateway(OperatorEventGateway operatorEventGateway) {
-        this.operatorEventGateway = operatorEventGateway;
     }
 
     @Override
@@ -86,7 +82,7 @@ public class DynamicPartitionOperator extends AbstractStreamOperator<Object>
 
     public void finish() throws Exception {
         DynamicPartitionEvent event = new DynamicPartitionEvent(new PartitionData(buffer));
-        operatorEventGateway.sendEventToCoordinator(new SourceEventWrapper(event));
+        operatorEventGateway.sendEventToCoordinator(event);
     }
 
     @Override

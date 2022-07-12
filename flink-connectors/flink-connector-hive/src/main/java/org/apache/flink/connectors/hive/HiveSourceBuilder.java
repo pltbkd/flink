@@ -92,6 +92,7 @@ public class HiveSourceBuilder {
     private Long limit;
     private List<HiveTablePartition> partitions;
     private List<String> dynamicPartitionKeys;
+    private String coordinatingMailboxID;
 
     /**
      * Creates a builder to read a hive table.
@@ -238,6 +239,7 @@ public class HiveSourceBuilder {
                 new Path[1],
                 dynamicPartitionKeys,
                 partitions,
+                coordinatingMailboxID,
                 splitAssigner,
                 bulkFormat,
                 continuousSourceSettings,
@@ -260,6 +262,12 @@ public class HiveSourceBuilder {
 
     public HiveSourceBuilder setDynamicPartitionKeys(List<String> dynamicPartitionKeys) {
         this.dynamicPartitionKeys = dynamicPartitionKeys;
+        return this;
+    }
+
+    public HiveSourceBuilder setCoordinatingMailboxID(
+            String coordinatingMailboxID) {
+        this.coordinatingMailboxID = coordinatingMailboxID;
         return this;
     }
 

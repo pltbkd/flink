@@ -21,42 +21,43 @@ package org.apache.flink.table.runtime.operators.dpp;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.operators.coordination.OperatorEventDispatcher;
+import org.apache.flink.runtime.operators.coordination.OperatorEventGateway;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.CoordinatedOperatorFactory;
-import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.StreamOperatorParameters;
-import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.types.logical.RowType;
 
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 /** DynamicPartitionSinkFactory. */
-public class DynamicPartitionOperatorFactory extends SimpleOperatorFactory<Object>
+public class DynamicPartitionOperatorFactory extends AbstractStreamOperatorFactory<Object>
         implements CoordinatedOperatorFactory<Object> {
 
-    private final transient CompletableFuture<byte[]> sourceOperatorIdFuture;
-    private OperatorID sourceOperatorId;
-    private final DynamicPartitionOperator operator;
+    private final RowType partitionFieldType;
+    private final List<Integer> partitionFieldIndices;
+    private final String coordinatingMailboxID;
 
     public DynamicPartitionOperatorFactory(
-            CompletableFuture<byte[]> sourceOperatorIdFuture,
             RowType partitionFieldType,
-            List<Integer> partitionFieldIndices) {
-        super(new DynamicPartitionOperator(partitionFieldType, partitionFieldIndices));
-        this.operator = (DynamicPartitionOperator) getOperator();
-        this.sourceOperatorIdFuture = sourceOperatorIdFuture;
+            List<Integer> partitionFieldIndices,
+            String coordinatingMailboxID) {
+        this.partitionFieldType = partitionFieldType;
+        this.partitionFieldIndices = partitionFieldIndices;
+        this.coordinatingMailboxID = coordinatingMailboxID;
     }
 
     @Override
     public <T extends StreamOperator<Object>> T createStreamOperator(
             StreamOperatorParameters<Object> parameters) {
+        final OperatorID operatorId = parameters.getStreamConfig().getOperatorID();
         final OperatorEventDispatcher eventDispatcher = parameters.getOperatorEventDispatcher();
-        if (sourceOperatorId == null) {
-            throw new TableException("sourceOperatorId is empty");
-        }
-        operator.setOperatorEventGateway(eventDispatcher.getOperatorEventGateway(sourceOperatorId));
+        OperatorEventGateway operatorEventGateway =
+                eventDispatcher.getOperatorEventGateway(operatorId);
 
+        DynamicPartitionOperator operator =
+                new DynamicPartitionOperator(
+                        partitionFieldType, partitionFieldIndices, operatorEventGateway);
         operator.setup(
                 parameters.getContainingTask(),
                 parameters.getStreamConfig(),
@@ -69,14 +70,15 @@ public class DynamicPartitionOperatorFactory extends SimpleOperatorFactory<Objec
         return castedOperator;
     }
 
+    @SuppressWarnings("rawtypes")
+    @Override
+    public Class<? extends StreamOperator> getStreamOperatorClass(ClassLoader classLoader) {
+        return DynamicPartitionOperator.class;
+    }
+
     @Override
     public OperatorCoordinator.Provider getCoordinatorProvider(
             String operatorName, OperatorID operatorID) {
-        byte[] sourceOperatorIdBytes = sourceOperatorIdFuture.getNow(null);
-        if (sourceOperatorIdBytes == null) {
-            throw new TableException("sourceOperatorId is empty");
-        }
-        sourceOperatorId = new OperatorID(sourceOperatorIdBytes);
-        return new DynamicPartitionOperatorCoordinator.Provider(operatorID);
+        return new DynamicPartitionOperatorCoordinator.Provider(operatorID, coordinatingMailboxID);
     }
 }

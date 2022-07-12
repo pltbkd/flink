@@ -20,20 +20,20 @@ package org.apache.flink.table.planner.plan.nodes.physical.batch
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
 import org.apache.flink.table.planner.plan.nodes.exec.{ExecNode, InputProperty}
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecDynamicPartitionSink
-import org.apache.flink.table.planner.plan.utils.FlinkRelOptUtil
 import org.apache.flink.table.planner.utils.JavaScalaConversionUtil
 import org.apache.flink.table.planner.utils.ShortcutUtils.unwrapTableConfig
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
-import org.apache.calcite.rel.{RelNode, RelWriter, SingleRel}
+import org.apache.calcite.rel.{RelNode, SingleRel}
 
 class BatchPhysicalDynamicPartitionSink(
     cluster: RelOptCluster,
     traitSet: RelTraitSet,
     input: RelNode,
     outputType: RelDataType,
-    val partitionFields: Array[Int]
+    val partitionFields: Array[Int],
+    coordinatingMailboxID: String
 ) extends SingleRel(cluster, traitSet, input)
   with BatchPhysicalRel {
 
@@ -45,12 +45,14 @@ class BatchPhysicalDynamicPartitionSink(
       traitSet,
       inputs.get(0),
       outputType,
-      partitionFields)
+      partitionFields,
+      coordinatingMailboxID)
   }
 
   override def translateToExecNode(): ExecNode[_] = {
     new BatchExecDynamicPartitionSink(
       JavaScalaConversionUtil.toJava(partitionFields.map(i => Integer.valueOf(i))),
+      coordinatingMailboxID,
       unwrapTableConfig(this),
       InputProperty.DEFAULT,
       FlinkTypeFactory.toLogicalRowType(getRowType),

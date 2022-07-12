@@ -180,6 +180,10 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT>
     public void start() throws Exception {
         LOG.info("Starting split enumerator for source {}.", operatorName);
 
+        if (source instanceof CrossCoordinatingSource) {
+            ((CrossCoordinatingSource) source).setCoordinatorStore(coordinatorStore);
+        }
+
         // we mark this as started first, so that we can later distinguish the cases where
         // 'start()' wasn't called and where 'start()' failed.
         started = true;

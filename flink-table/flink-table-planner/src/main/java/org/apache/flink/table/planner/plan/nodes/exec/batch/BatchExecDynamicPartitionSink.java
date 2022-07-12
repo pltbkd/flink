@@ -20,7 +20,7 @@ package org.apache.flink.table.planner.plan.nodes.exec.batch;
 
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.configuration.ReadableConfig;
-import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
+import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.planner.delegation.PlannerBase;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecEdge;
@@ -35,7 +35,6 @@ import org.apache.flink.table.types.logical.RowType;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 
@@ -44,10 +43,11 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
         implements BatchExecNode<Object> {
 
     private final List<Integer> partitionFields;
-    private transient CompletableFuture<byte[]> sourceOperatorIdFuture;
+    private final String coordinatingMailboxID;
 
     public BatchExecDynamicPartitionSink(
             List<Integer> partitionFields,
+            String coordinatingMailboxID,
             ReadableConfig tableConfig,
             InputProperty inputProperty,
             RowType outputType,
@@ -60,11 +60,8 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
                 outputType,
                 description);
         this.partitionFields = partitionFields;
+        this.coordinatingMailboxID = coordinatingMailboxID;
         checkArgument(outputType.getFieldCount() == partitionFields.size());
-    }
-
-    public void setSourceOperatorIdFuture(CompletableFuture<byte[]> sourceOperatorIdFuture) {
-        this.sourceOperatorIdFuture = sourceOperatorIdFuture;
     }
 
     @Override
@@ -74,9 +71,11 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
         final ExecEdge inputEdge = getInputEdges().get(0);
         final Transformation<RowData> inputTransform =
                 (Transformation<RowData>) inputEdge.translateToPlan(planner);
-        SimpleOperatorFactory<Object> factory =
+        StreamOperatorFactory<Object> factory =
                 new DynamicPartitionOperatorFactory(
-                        sourceOperatorIdFuture, (RowType) getOutputType(), partitionFields);
+                        (RowType) getOutputType(),
+                        partitionFields,
+                        coordinatingMailboxID);
 
         return ExecNodeUtil.createOneInputTransformation(
                 inputTransform,

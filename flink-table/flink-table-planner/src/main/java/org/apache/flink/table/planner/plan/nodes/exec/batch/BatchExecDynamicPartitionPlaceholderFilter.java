@@ -21,7 +21,6 @@ package org.apache.flink.table.planner.plan.nodes.exec.batch;
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.streaming.api.transformations.MultipleInputTransformation;
-import org.apache.flink.streaming.api.transformations.SourceTransformation;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.planner.delegation.PlannerBase;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecEdge;
@@ -34,7 +33,6 @@ import org.apache.flink.table.types.logical.RowType;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 public class BatchExecDynamicPartitionPlaceholderFilter extends ExecNodeBase<RowData>
         implements BatchExecNode<RowData> {
@@ -57,13 +55,7 @@ public class BatchExecDynamicPartitionPlaceholderFilter extends ExecNodeBase<Row
 
         Transformation<RowData> sourceTransformation =
                 (Transformation<RowData>) edges.get(1).getSource().translateToPlan(planner);
-        CompletableFuture<byte[]> sourceOperatorIdFuture =
-                ((SourceTransformation<?, ?, ?>) sourceTransformation)
-                        .getSource()
-                        .getOperatorIdFuture();
 
-        ((BatchExecDynamicPartitionSink) edges.get(0).getSource())
-                .setSourceOperatorIdFuture(sourceOperatorIdFuture);
         Transformation<Object> dppTransformation =
                 (Transformation<Object>) edges.get(0).getSource().translateToPlan(planner);
 

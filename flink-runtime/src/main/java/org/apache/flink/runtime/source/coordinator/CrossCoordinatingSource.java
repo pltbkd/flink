@@ -16,12 +16,14 @@
  * limitations under the License.
  */
 
-package org.apache.flink.table.connector.source.abilities;
+package org.apache.flink.runtime.source.coordinator;
 
-import java.util.List;
+import org.apache.flink.runtime.operators.coordination.CoordinatorStore;
 
-/** SupportsDynamicPartitionPruning. */
-public interface SupportsDynamicPartitionPruning {
-
-    void applyDynamicPartitionPruning(List<String> partitionKeys, String coordinatingMailboxID);
+/**
+ * Trait indicates the source needs coordinating cross operators via the {@link CoordinatorStore}.
+ * The CoordinatorStore is available only when the coordinator is started.
+ */
+public interface CrossCoordinatingSource {
+    void setCoordinatorStore(CoordinatorStore coordinatorStore);
 }

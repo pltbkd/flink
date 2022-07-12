@@ -54,6 +54,7 @@ import org.apache.calcite.util.ImmutableIntList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.configuration.ConfigOptions.key;
@@ -399,6 +400,8 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
             RelNode dimSide,
             ImmutableIntList partitionKeysInFactScan,
             ImmutableIntList partitionKeysInDim) {
+        String coordinatingMailboxID = UUID.randomUUID().toString();
+
         TableSourceTable tableSourceTable = factScan.getTable().unwrap(TableSourceTable.class);
         DynamicTableSource newTableSource = tableSourceTable.tableSource().copy();
         List<String> dynamicPartitionKeys =
@@ -406,7 +409,8 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
                         .map(i -> factScan.getRowType().getFieldNames().get(i))
                         .collect(Collectors.toList());
         ((SupportsDynamicPartitionPruning) newTableSource)
-                .applyDynamicPartitionPruning(dynamicPartitionKeys);
+                .applyDynamicPartitionPruning(
+                        dynamicPartitionKeys, coordinatingMailboxID);
 
         TableSourceTable newTable =
                 tableSourceTable.copy(
@@ -415,7 +419,10 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
                         tableSourceTable.abilitySpecs());
 
         final BatchPhysicalDynamicPartitionSink dppSink =
-                createDynamicPartitionSink(dimSide, partitionKeysInDim.toIntArray());
+                createDynamicPartitionSink(
+                        dimSide,
+                        partitionKeysInDim.toIntArray(),
+                        coordinatingMailboxID);
 
         TableScan tableScan = factScan.copy(newTable);
 
@@ -428,14 +435,21 @@ public class DynamicPartitionPruningRule extends RelRule<RelRule.Config> {
     }
 
     private BatchPhysicalDynamicPartitionSink createDynamicPartitionSink(
-            RelNode dimSide, int[] dimPartitionFields) {
+            RelNode dimSide,
+            int[] dimPartitionFields,
+            String coordinatingMailboxID) {
         final RelDataType outputType =
                 ((FlinkTypeFactory) dimSide.getCluster().getTypeFactory())
                         .projectStructType(dimSide.getRowType(), dimPartitionFields);
         RelNode input = createDynamicPartitionSinkInput(dimSide);
 
         return new BatchPhysicalDynamicPartitionSink(
-                dimSide.getCluster(), dimSide.getTraitSet(), input, outputType, dimPartitionFields);
+                dimSide.getCluster(),
+                dimSide.getTraitSet(),
+                input,
+                outputType,
+                dimPartitionFields,
+                coordinatingMailboxID);
     }
 
     private RelNode createDynamicPartitionSinkInput(RelNode dimSide) {

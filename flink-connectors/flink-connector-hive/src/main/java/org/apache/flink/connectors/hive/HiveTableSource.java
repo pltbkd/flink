@@ -95,6 +95,7 @@ public class HiveTableSource
     protected int[] projectedFields;
     private Long limit = null;
     @Nullable private List<String> dynamicPartitionKeys = null;
+    @Nullable private String coordinatingMailboxID;
 
     public HiveTableSource(
             JobConf jobConf,
@@ -171,6 +172,7 @@ public class HiveTableSource
                             sourceBuilder
                                     .setPartitions(hivePartitionsToRead)
                                     .setDynamicPartitionKeys(dynamicPartitionKeys)
+                                    .setCoordinatingMailboxID(coordinatingMailboxID)
                                     .buildWithDefaultBulkFormat())
                     .setParallelism(parallelism);
         }
@@ -239,7 +241,8 @@ public class HiveTableSource
     }
 
     @Override
-    public void applyDynamicPartitionPruning(List<String> dynamicPartitionKeys) {
+    public void applyDynamicPartitionPruning(
+            List<String> dynamicPartitionKeys, String coordinatingMailboxID) {
         checkArgument(remainingPartitions == null);
         if (catalogTable.getPartitionKeys() != null
                 && catalogTable.getPartitionKeys().size() != 0) {
@@ -247,6 +250,7 @@ public class HiveTableSource
             checkArgument(catalogTable.getPartitionKeys().containsAll(dynamicPartitionKeys));
 
             this.dynamicPartitionKeys = dynamicPartitionKeys;
+            this.coordinatingMailboxID = coordinatingMailboxID;
         } else {
             throw new UnsupportedOperationException(
                     "Should not apply dynamic partitions to a non-partitioned table.");
@@ -280,6 +284,7 @@ public class HiveTableSource
         source.projectedFields = projectedFields;
         source.limit = limit;
         source.dynamicPartitionKeys = dynamicPartitionKeys;
+        source.coordinatingMailboxID = coordinatingMailboxID;
         return source;
     }
 
