@@ -59,6 +59,7 @@ import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.checkpoint.WithMasterCheckpointHook;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
+import org.apache.flink.streaming.api.graph.SourceCoordinatorProxy.SourceCoordinatorProxyProvider;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.InputSelectable;
 import org.apache.flink.streaming.api.operators.SourceOperatorFactory;
@@ -481,7 +482,10 @@ public class StreamingJobGraphGenerator {
                     final SourceOperatorFactory<?> sourceOpFact =
                             (SourceOperatorFactory<?>) sourceNode.getOperatorFactory();
                     final OperatorCoordinator.Provider coord =
-                            sourceOpFact.getCoordinatorProvider(sourceNode.getOperatorName(), opId);
+                            new SourceCoordinatorProxyProvider(
+                                    sourceNode.getId(),
+                                    sourceOpFact.getCoordinatorProvider(
+                                            sourceNode.getOperatorName(), opId));
 
                     final OperatorChainInfo chainInfo =
                             chainEntryPoints.computeIfAbsent(

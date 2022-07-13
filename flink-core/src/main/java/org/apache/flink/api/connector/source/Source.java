@@ -96,9 +96,4 @@ public interface Source<T, SplitT extends SourceSplit, EnumChkT> extends Seriali
      * @return The serializer for the SplitEnumerator checkpoint.
      */
     SimpleVersionedSerializer<EnumChkT> getEnumeratorCheckpointSerializer();
-
-    /** HACK solution. */
-    default CompletableFuture<byte[]> getOperatorIdFuture() {
-        return CompletableFuture.completedFuture(null);
-    }
 }
