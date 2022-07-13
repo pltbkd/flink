@@ -51,6 +51,8 @@ import java.util.concurrent.CompletableFuture;
 public class BatchExecTableSourceScan extends CommonExecTableSourceScan
         implements BatchExecNode<RowData> {
 
+    private boolean skipDependencyEdge;
+
     public BatchExecTableSourceScan(
             ReadableConfig tableConfig,
             DynamicTableSourceSpec tableSourceSpec,
@@ -69,6 +71,10 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
                         : Collections.emptyList());
     }
 
+    public void setSkipDependencyEdge(boolean skipDependencyEdge) {
+        this.skipDependencyEdge = skipDependencyEdge;
+    }
+
     @Override
     protected Transformation<RowData> translateToPlanInternal(
             PlannerBase planner, ExecNodeConfig config) {
@@ -76,6 +82,12 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
         // the boundedness has been checked via the runtime provider already, so we can safely
         // declare all legacy transformations as bounded to make the stream graph generator happy
         ExecNodeUtil.makeLegacySourceTransformationsBounded(transformation);
+
+        System.out.println("Translate " + this + ", skipDependencyEdge = " + skipDependencyEdge);
+
+        if (skipDependencyEdge) {
+            return transformation;
+        }
 
         List<ExecEdge> edges = getInputEdges();
         if (edges.size() == 0) {
