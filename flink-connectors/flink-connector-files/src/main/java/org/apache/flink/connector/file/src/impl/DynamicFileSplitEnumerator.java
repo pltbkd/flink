@@ -40,13 +40,11 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * A SplitEnumerator implementation for bounded / batch {@link FileSource} input.
@@ -71,8 +69,6 @@ public abstract class DynamicFileSplitEnumerator<SplitT extends FileSourceSplit>
     private final FileSplitAssigner.Provider splitAssignerFactory;
     private transient FileSplitAssigner splitAssigner;
 
-    private final LinkedHashMap<Integer, String> readersAwaitingSplit;
-
     private transient boolean partitionDataReceived;
 
     // ------------------------------------------------------------------------
@@ -85,7 +81,6 @@ public abstract class DynamicFileSplitEnumerator<SplitT extends FileSourceSplit>
         this.splitAssignerFactory = checkNotNull(splitAssignerFactory);
         this.fileEnumeratorFactory = checkNotNull(fileEnumeratorFactory);
         this.partitionDataReceived = false;
-        this.readersAwaitingSplit = new LinkedHashMap<>();
     }
 
     @Override
@@ -105,10 +100,16 @@ public abstract class DynamicFileSplitEnumerator<SplitT extends FileSourceSplit>
 
     @Override
     public void handleSplitRequest(int subtask, @Nullable String hostname) {
+        // Let's do a simple shortcuts now
         if (!partitionDataReceived) {
-            readersAwaitingSplit.put(subtask, hostname);
-            return;
+            LOG.warn("The dynamic partition info is not received: " + this);
+            // now let's assume it does not for all the remaining requests
+            handleSourceEvent(0, new DynamicPartitionEvent(null));
         }
+
+        checkState(
+                partitionDataReceived, "We should not handle request before finalize partitions");
+
         if (!context.registeredReaders().containsKey(subtask)) {
             // reader failed between sending the request and now. skip this request.
             return;
@@ -133,7 +134,7 @@ public abstract class DynamicFileSplitEnumerator<SplitT extends FileSourceSplit>
 
     @Override
     public void handleSourceEvent(int subtaskId, SourceEvent sourceEvent) {
-        if (sourceEvent instanceof DynamicPartitionEvent) {
+        if (sourceEvent instanceof DynamicPartitionEvent && !this.partitionDataReceived) {
             LOG.info("Received DynamicPartitionEvent: {}", subtaskId);
             DynamicFileEnumerator fileEnumerator = fileEnumeratorFactory.create();
             fileEnumerator.setPartitionData(((DynamicPartitionEvent) sourceEvent).getData());
@@ -146,7 +147,6 @@ public abstract class DynamicFileSplitEnumerator<SplitT extends FileSourceSplit>
             }
             splitAssigner = splitAssignerFactory.create(splits);
             this.partitionDataReceived = true;
-            assignAwaitingRequest();
         } else {
             LOG.error("Received unrecognized event: {}", sourceEvent);
         }
@@ -163,25 +163,5 @@ public abstract class DynamicFileSplitEnumerator<SplitT extends FileSourceSplit>
     public PendingSplitsCheckpoint<SplitT> snapshotState(long checkpointId) {
         // do not do snapshot
         return PendingSplitsCheckpoint.fromCollectionSnapshot(new ArrayList<>());
-    }
-
-    private void assignAwaitingRequest() {
-        final Iterator<Map.Entry<Integer, String>> awaitingReader =
-                readersAwaitingSplit.entrySet().iterator();
-
-        while (awaitingReader.hasNext()) {
-            final Map.Entry<Integer, String> nextAwaiting = awaitingReader.next();
-
-            // if the reader that requested another split has failed in the meantime, remove
-            // it from the list of waiting readers
-            if (!context.registeredReaders().containsKey(nextAwaiting.getKey())) {
-                awaitingReader.remove();
-                continue;
-            }
-
-            final String hostname = nextAwaiting.getValue();
-            final int awaitingSubtask = nextAwaiting.getKey();
-            handleSplitRequest(awaitingSubtask, hostname);
-        }
     }
 }

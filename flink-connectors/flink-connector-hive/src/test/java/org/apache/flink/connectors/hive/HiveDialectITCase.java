@@ -369,32 +369,39 @@ public class HiveDialectITCase {
     @Test
     public void testDpp2() throws Exception {
         tableEnv.executeSql("create table dim (x int,y string,z int)");
-//        tableEnv.executeSql("insert into dim values (1,'a',1),(2,'b',1),(3,'c',2)").await();
+        //        tableEnv.executeSql("insert into dim values
+        // (1,'a',1),(2,'b',1),(3,'c',2)").await();
 
         // partitioned dest table
         tableEnv.executeSql("create table fact (a int, b bigint, c string) partitioned by (p int)");
-//        tableEnv.executeSql(
-//                        "insert into fact partition (p=1) values (10,100,'aaa'),(11,101,'bbb'),(12,102,'ccc') ")
-//                .await();
-//        tableEnv.executeSql(
-//                        "insert into fact partition (p=2) values (20,200,'aaa'),(21,201,'bbb'),(22,202,'ccc') ")
-//                .await();
-//        tableEnv.executeSql(
-//                        "insert into fact partition (p=3) values (30,300,'aaa'),(31,301,'bbb'),(32,302,'ccc') ")
-//                .await();
+        //        tableEnv.executeSql(
+        //                        "insert into fact partition (p=1) values
+        // (10,100,'aaa'),(11,101,'bbb'),(12,102,'ccc') ")
+        //                .await();
+        //        tableEnv.executeSql(
+        //                        "insert into fact partition (p=2) values
+        // (20,200,'aaa'),(21,201,'bbb'),(22,202,'ccc') ")
+        //                .await();
+        //        tableEnv.executeSql(
+        //                        "insert into fact partition (p=3) values
+        // (30,300,'aaa'),(31,301,'bbb'),(32,302,'ccc') ")
+        //                .await();
 
         // partitioned dest table
         tableEnv.executeSql(
                 "create table fact2 (a int, b bigint, c string) partitioned by (p int)");
-//        tableEnv.executeSql(
-//                        "insert into fact2 partition (p=1) values (10,100,'aaa'),(11,101,'bbb'),(12,102,'ccc') ")
-//                .await();
-//        tableEnv.executeSql(
-//                        "insert into fact2 partition (p=2) values (20,200,'aaa'),(21,201,'bbb'),(22,202,'ccc') ")
-//                .await();
-//        tableEnv.executeSql(
-//                        "insert into fact2 partition (p=3) values (30,300,'aaa'),(31,301,'bbb'),(32,302,'ccc') ")
-//                .await();
+        //        tableEnv.executeSql(
+        //                        "insert into fact2 partition (p=1) values
+        // (10,100,'aaa'),(11,101,'bbb'),(12,102,'ccc') ")
+        //                .await();
+        //        tableEnv.executeSql(
+        //                        "insert into fact2 partition (p=2) values
+        // (20,200,'aaa'),(21,201,'bbb'),(22,202,'ccc') ")
+        //                .await();
+        //        tableEnv.executeSql(
+        //                        "insert into fact2 partition (p=3) values
+        // (30,300,'aaa'),(31,301,'bbb'),(32,302,'ccc') ")
+        //                .await();
 
         tableEnv.getConfig().set(TaskManagerOptions.NUM_TASK_SLOTS, 4);
         tableEnv.getConfig().set(ExecutionConfigOptions.TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM, 1);

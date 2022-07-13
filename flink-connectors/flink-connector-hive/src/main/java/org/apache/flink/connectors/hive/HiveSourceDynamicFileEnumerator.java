@@ -28,6 +28,8 @@ import org.apache.hadoop.mapred.JobConf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -60,7 +62,7 @@ public class HiveSourceDynamicFileEnumerator implements DynamicFileEnumerator {
         this.jobConf = jobConf;
     }
 
-    public void setPartitionData(PartitionData partitionData) {
+    public void setPartitionData(@Nullable PartitionData partitionData) {
         LOG.info("Table: {}, Partition Data: {}", table, partitionData);
         finalPartitions = new ArrayList<>();
         for (HiveTablePartition partition : partitions) {
@@ -68,7 +70,7 @@ public class HiveSourceDynamicFileEnumerator implements DynamicFileEnumerator {
                     dynamicPartitionKeys.stream()
                             .map(k -> partition.getPartitionSpec().get(k))
                             .toArray(String[]::new);
-            if (partitionData.hasPartition(Row.of(values))) {
+            if (partitionData == null || partitionData.hasPartition(Row.of(values))) {
                 finalPartitions.add(partition);
             }
         }
