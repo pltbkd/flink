@@ -460,6 +460,14 @@ public class StreamingJobGraphGenerator {
                 final ChainingStrategy targetChainingStrategy =
                         target.getOperatorFactory().getChainingStrategy();
 
+                System.out.println(
+                        sourceNode
+                                + ","
+                                + "check chain source 2, targetChainingStrategy is "
+                                + targetChainingStrategy
+                                + ", is chainable = "
+                                + isChainableInput(sourceOutEdge, streamGraph));
+
                 if (targetChainingStrategy == ChainingStrategy.HEAD_WITH_SOURCES
                         && isChainableInput(sourceOutEdge, streamGraph)) {
                     final OperatorID opId = new OperatorID(hashes.get(sourceNodeId));

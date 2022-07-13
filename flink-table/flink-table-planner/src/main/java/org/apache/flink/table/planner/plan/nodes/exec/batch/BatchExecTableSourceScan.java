@@ -85,10 +85,6 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
 
         System.out.println("Translate " + this + ", skipDependencyEdge = " + skipDependencyEdge);
 
-        if (skipDependencyEdge) {
-            return transformation;
-        }
-
         List<ExecEdge> edges = getInputEdges();
         if (edges.size() == 0) {
             return transformation;
@@ -102,6 +98,10 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
                 (BatchExecDynamicPartitionSink) edges.get(0).getSource();
         sink.addSourceOperatorIdFuture(sourceOperatorIdFuture);
         Transformation<Object> dppTransformation = sink.translateToPlan(planner);
+
+        if (skipDependencyEdge) {
+            return transformation;
+        }
 
         MultipleInputTransformation<RowData> multipleInputTransformation =
                 new MultipleInputTransformation<>(
