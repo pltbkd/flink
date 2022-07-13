@@ -24,7 +24,6 @@ import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.InputFormatSourceFunction;
 import org.apache.flink.streaming.api.transformations.MultipleInputTransformation;
-import org.apache.flink.streaming.api.transformations.SourceTransformation;
 import org.apache.flink.table.connector.source.ScanTableSource;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.planner.delegation.PlannerBase;
@@ -42,7 +41,8 @@ import org.apache.flink.table.types.logical.RowType;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * Batch {@link ExecNode} to read data from an external source defined by a bounded {@link
@@ -51,11 +51,14 @@ import java.util.concurrent.CompletableFuture;
 public class BatchExecTableSourceScan extends CommonExecTableSourceScan
         implements BatchExecNode<RowData> {
 
+    private final String partitionDataListenerID;
+
     public BatchExecTableSourceScan(
             ReadableConfig tableConfig,
             DynamicTableSourceSpec tableSourceSpec,
             RowType outputType,
             String description,
+            String partitionDataListenerID,
             boolean hasDppSink) {
         super(
                 ExecNodeContext.newNodeId(),
@@ -67,6 +70,7 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
                 hasDppSink
                         ? Collections.singletonList(InputProperty.DEFAULT)
                         : Collections.emptyList());
+        this.partitionDataListenerID = partitionDataListenerID;
     }
 
     @Override
@@ -82,13 +86,12 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
             return transformation;
         }
 
-        // Now ...
-        CompletableFuture<byte[]> sourceOperatorIdFuture =
-                ((SourceTransformation<?, ?, ?>) transformation).getSource().getOperatorIdFuture();
-
+        checkState(
+                partitionDataListenerID != null,
+                "Dynamic partition pruning is not supported since partition data listener is not identified.");
         BatchExecDynamicPartitionSink sink =
                 (BatchExecDynamicPartitionSink) edges.get(0).getSource();
-        sink.addSourceOperatorIdFuture(sourceOperatorIdFuture);
+        sink.registerPartitionDataListenerID(partitionDataListenerID);
         Transformation<Object> dppTransformation = sink.translateToPlan(planner);
 
         MultipleInputTransformation<RowData> multipleInputTransformation =

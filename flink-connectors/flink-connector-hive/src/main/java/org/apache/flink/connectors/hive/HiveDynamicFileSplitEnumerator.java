@@ -29,7 +29,8 @@ public class HiveDynamicFileSplitEnumerator extends DynamicFileSplitEnumerator<H
     public HiveDynamicFileSplitEnumerator(
             SplitEnumeratorContext<HiveSourceSplit> context,
             DynamicFileEnumerator.Provider fileEnumeratorFactory,
-            FileSplitAssigner.Provider splitAssignerFactory) {
-        super(context, fileEnumeratorFactory, splitAssignerFactory);
+            FileSplitAssigner.Provider splitAssignerFactory,
+            String partitionDataMailboxID) {
+        super(context, fileEnumeratorFactory, splitAssignerFactory, partitionDataMailboxID);
     }
 }

@@ -16,18 +16,18 @@
  * limitations under the License.
  */
 
-package org.apache.flink.table.connector.source.abilities;
+package org.apache.flink.runtime.source.coordinator;
 
-import java.util.List;
+import org.apache.flink.api.connector.source.SourceSplit;
+import org.apache.flink.api.connector.source.SplitEnumerator;
+import org.apache.flink.runtime.operators.coordination.CoordinatorStore;
 
-/** SupportsDynamicPartitionPruning. */
-public interface SupportsDynamicPartitionPruning {
+/**
+ * Trait indicates the enumerator needs coordinating cross operators via the {@link
+ * CoordinatorStore}.
+ */
+public interface CrossCoordinatingEnumerator<SplitT extends SourceSplit, CheckpointT>
+        extends SplitEnumerator<SplitT, CheckpointT> {
 
-    void applyDynamicPartitionPruning(List<String> partitionKeys);
-
-    /**
-     * Returns the ID of the mailbox in the coordinator store, from where the split enumerator
-     * expects to acquire the dynamic partition data for pruning.
-     */
-    String getDynamicPartitionDataListenerID();
+    void withCoordinatorStore(CoordinatorStore coordinatorStore);
 }

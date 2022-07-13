@@ -195,6 +195,10 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT>
             try (TemporaryClassLoaderContext ignored =
                     TemporaryClassLoaderContext.of(userCodeClassLoader)) {
                 enumerator = source.createEnumerator(context);
+                if (enumerator instanceof CrossCoordinatingEnumerator) {
+                    ((CrossCoordinatingEnumerator<SplitT, EnumChkT>) enumerator)
+                            .withCoordinatorStore(coordinatorStore);
+                }
             } catch (Throwable t) {
                 ExceptionUtils.rethrowIfFatalErrorOrOOM(t);
                 LOG.error("Failed to create Source Enumerator for source {}", operatorName, t);

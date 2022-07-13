@@ -22,6 +22,7 @@ import org.apache.calcite.plan.hep.HepRelVertex
 import org.apache.calcite.rel.hint.RelHint
 import org.apache.calcite.rel.metadata.RelMetadataQuery
 import org.apache.calcite.rel.{RelNode, RelWriter}
+import org.apache.flink.table.connector.source.abilities.SupportsDynamicPartitionPruning
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecTableSourceScan
@@ -105,11 +106,19 @@ class BatchPhysicalTableSourceScan(
       util.Arrays.asList(tableSourceTable.abilitySpecs: _*))
     tableSourceSpec.setTableSource(tableSourceTable.tableSource)
 
+    val partitionDataListenerID =
+        tableSourceTable.tableSource match {
+            case dynamicPartitionSource: SupportsDynamicPartitionPruning =>
+                dynamicPartitionSource.getDynamicPartitionDataListenerID
+            case _ => null
+        }
+
     new BatchExecTableSourceScan(
       unwrapTableConfig(this),
       tableSourceSpec,
       FlinkTypeFactory.toLogicalRowType(getRowType),
       getRelDetailedDescription,
+      partitionDataListenerID,
       dppSink != null)
   }
 }

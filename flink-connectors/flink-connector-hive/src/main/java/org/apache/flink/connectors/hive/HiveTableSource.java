@@ -66,6 +66,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.apache.flink.connector.file.table.FileSystemConnectorOptions.PARTITION_TIME_EXTRACTOR_TIMESTAMP_FORMATTER;
 import static org.apache.flink.connectors.hive.HiveOptions.STREAMING_SOURCE_CONSUME_START_OFFSET;
@@ -96,6 +97,7 @@ public class HiveTableSource
     protected int[] projectedFields;
     private Long limit = null;
     @Nullable private List<String> dynamicPartitionKeys = null;
+    private final String dynamicPartitionDataListenerID;
 
     public HiveTableSource(
             JobConf jobConf,
@@ -111,6 +113,7 @@ public class HiveTableSource
                         jobConf.get(HiveCatalogFactoryOptions.HIVE_VERSION.key()),
                         "Hive version is not defined");
         this.hiveShim = HiveShimLoader.loadHiveShim(hiveVersion);
+        this.dynamicPartitionDataListenerID = UUID.randomUUID().toString();
     }
 
     @Override
@@ -184,6 +187,7 @@ public class HiveTableSource
                             sourceBuilder
                                     .setPartitions(hivePartitionsToRead)
                                     .setDynamicPartitionKeys(dynamicPartitionKeys)
+                                    .setPartitionDataMailboxID(dynamicPartitionDataListenerID)
                                     .buildWithDefaultBulkFormat())
                     .setParallelism(parallelism);
         }
@@ -263,6 +267,11 @@ public class HiveTableSource
             throw new UnsupportedOperationException(
                     "Should not apply dynamic partitions to a non-partitioned table.");
         }
+    }
+
+    @Override
+    public String getDynamicPartitionDataListenerID() {
+        return dynamicPartitionDataListenerID;
     }
 
     @Override

@@ -16,12 +16,13 @@
  * limitations under the License.
  */
 
-package org.apache.flink.table.connector.source;
+package org.apache.flink.table.runtime.operators.dpp;
 
-import org.apache.flink.api.connector.source.SourceEvent;
+import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.table.connector.source.PartitionData;
 
 /** DynamicPartitionEvent. */
-public class DynamicPartitionEvent implements SourceEvent {
+public class DynamicPartitionEvent implements OperatorEvent {
     private final PartitionData data;
 
     public DynamicPartitionEvent(PartitionData data) {
