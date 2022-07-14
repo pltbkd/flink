@@ -41,6 +41,7 @@ public class SourceTransformation<OUT, SplitT extends SourceSplit, EnumChkT>
     private final WatermarkStrategy<OUT> watermarkStrategy;
 
     private ChainingStrategy chainingStrategy = ChainingStrategy.DEFAULT_CHAINING_STRATEGY;
+    private String coordinatorListeningID;
 
     /**
      * Creates a new {@code Transformation} with the given name, output type and parallelism.
@@ -93,5 +94,13 @@ public class SourceTransformation<OUT, SplitT extends SourceSplit, EnumChkT>
 
     public ChainingStrategy getChainingStrategy() {
         return chainingStrategy;
+    }
+
+    public void setCoordinatorListeningID(String coordinatorListeningID) {
+        this.coordinatorListeningID = coordinatorListeningID;
+    }
+
+    public String getCoordinatorListeningID() {
+        return coordinatorListeningID;
     }
 }

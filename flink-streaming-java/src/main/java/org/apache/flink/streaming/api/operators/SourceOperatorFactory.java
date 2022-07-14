@@ -54,6 +54,8 @@ public class SourceOperatorFactory<OUT> extends AbstractStreamOperatorFactory<OU
     /** The number of worker thread for the source coordinator. */
     private final int numCoordinatorWorkerThread;
 
+    private String coordinatorListeningID;
+
     public SourceOperatorFactory(
             Source<OUT, ?, ?> source, WatermarkStrategy<OUT> watermarkStrategy) {
         this(source, watermarkStrategy, true /* emit progressive watermarks */, 1);
@@ -79,6 +81,10 @@ public class SourceOperatorFactory<OUT> extends AbstractStreamOperatorFactory<OU
 
     public Boundedness getBoundedness() {
         return source.getBoundedness();
+    }
+
+    public void setCoordinatorListeningID(String coordinatorListeningID) {
+        this.coordinatorListeningID = coordinatorListeningID;
     }
 
     @Override
@@ -123,13 +129,15 @@ public class SourceOperatorFactory<OUT> extends AbstractStreamOperatorFactory<OU
     @Override
     public OperatorCoordinator.Provider getCoordinatorProvider(
             String operatorName, OperatorID operatorID) {
-        source.getOperatorIdFuture().complete(operatorID.getBytes());
-        return new SourceCoordinatorProvider<>(
-                operatorName,
-                operatorID,
-                source,
-                numCoordinatorWorkerThread,
-                watermarkStrategy.getAlignmentParameters());
+        SourceCoordinatorProvider<?> coordinatorProvider =
+                new SourceCoordinatorProvider<>(
+                        operatorName,
+                        operatorID,
+                        source,
+                        numCoordinatorWorkerThread,
+                        watermarkStrategy.getAlignmentParameters());
+        coordinatorProvider.setCoordinatorListeningID(coordinatorListeningID);
+        return coordinatorProvider;
     }
 
     @SuppressWarnings("rawtypes")

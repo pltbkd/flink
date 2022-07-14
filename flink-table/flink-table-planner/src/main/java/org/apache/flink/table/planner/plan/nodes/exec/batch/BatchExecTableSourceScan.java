@@ -39,10 +39,11 @@ import org.apache.flink.table.planner.plan.nodes.exec.utils.ExecNodeUtil;
 import org.apache.flink.table.runtime.operators.dpp.DppFilterOperatorFactory;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.util.Preconditions;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.UUID;
 
 /**
  * Batch {@link ExecNode} to read data from an external source defined by a bounded {@link
@@ -82,13 +83,15 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
             return transformation;
         }
 
-        // Now ...
-        CompletableFuture<byte[]> sourceOperatorIdFuture =
-                ((SourceTransformation<?, ?, ?>) transformation).getSource().getOperatorIdFuture();
-
+        Preconditions.checkState(
+                transformation instanceof SourceTransformation,
+                "Dynamic partition pruning is not supported.");
         BatchExecDynamicPartitionSink sink =
                 (BatchExecDynamicPartitionSink) edges.get(0).getSource();
-        sink.addSourceOperatorIdFuture(sourceOperatorIdFuture);
+        String partitionDataListenerID = UUID.randomUUID().toString();
+        ((SourceTransformation<?, ?, ?>) transformation)
+                .setCoordinatorListeningID(partitionDataListenerID);
+        sink.registerPartitionDataListenerID(String.valueOf(transformation.getId()));
         Transformation<Object> dppTransformation = sink.translateToPlan(planner);
 
         MultipleInputTransformation<RowData> multipleInputTransformation =

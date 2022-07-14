@@ -43,6 +43,7 @@ public class SourceCoordinatorProvider<SplitT extends SourceSplit>
     private final Source<?, SplitT, ?> source;
     private final int numWorkerThreads;
     private final WatermarkAlignmentParams alignmentParams;
+    private String coordinatorListeningID;
 
     /**
      * Construct the {@link SourceCoordinatorProvider}.
@@ -78,12 +79,19 @@ public class SourceCoordinatorProvider<SplitT extends SourceSplit>
         SourceCoordinatorContext<SplitT> sourceCoordinatorContext =
                 new SourceCoordinatorContext<>(
                         coordinatorThreadFactory, numWorkerThreads, context, splitSerializer);
-        return new SourceCoordinator<>(
-                operatorName,
-                source,
-                sourceCoordinatorContext,
-                context.getCoordinatorStore(),
-                alignmentParams);
+        SourceCoordinator<SplitT, ?> coordinator =
+                new SourceCoordinator<>(
+                        operatorName,
+                        source,
+                        sourceCoordinatorContext,
+                        context.getCoordinatorStore(),
+                        alignmentParams);
+        coordinator.setCoordinatorListeningID(coordinatorListeningID);
+        return coordinator;
+    }
+
+    public void setCoordinatorListeningID(String coordinatorListeningID) {
+        this.coordinatorListeningID = coordinatorListeningID;
     }
 
     /** A thread factory class that provides some helper methods. */

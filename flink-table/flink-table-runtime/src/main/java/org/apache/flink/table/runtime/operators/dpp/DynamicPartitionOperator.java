@@ -39,25 +39,23 @@ public class DynamicPartitionOperator extends AbstractStreamOperator<Object>
 
     private final RowType partitionFieldType;
     private final List<Integer> partitionFieldIndices;
+    private final OperatorEventGateway operatorEventGateway;
+
     private transient List<Row> buffer;
 
-    /** The event gateway through which this operator talks to its coordinator. */
-    private transient List<OperatorEventGateway> operatorEventGateways;
-
     public DynamicPartitionOperator(
-            RowType partitionFieldType, List<Integer> partitionFieldIndices) {
+            RowType partitionFieldType,
+            List<Integer> partitionFieldIndices,
+            OperatorEventGateway operatorEventGateway) {
         this.partitionFieldType = partitionFieldType;
         this.partitionFieldIndices = partitionFieldIndices;
+        this.operatorEventGateway = operatorEventGateway;
     }
 
     @Override
     public void open() throws Exception {
         super.open();
         this.buffer = new ArrayList<>();
-    }
-
-    public void setOperatorEventGateways(List<OperatorEventGateway> operatorEventGateways) {
-        this.operatorEventGateways = operatorEventGateways;
     }
 
     @Override
@@ -86,10 +84,7 @@ public class DynamicPartitionOperator extends AbstractStreamOperator<Object>
 
     public void finish() throws Exception {
         DynamicPartitionEvent event = new DynamicPartitionEvent(new PartitionData(buffer));
-
-        for (OperatorEventGateway gateway : operatorEventGateways) {
-            gateway.sendEventToCoordinator(new SourceEventWrapper(event));
-        }
+        operatorEventGateway.sendEventToCoordinator(new SourceEventWrapper(event));
     }
 
     @Override
