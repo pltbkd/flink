@@ -100,6 +100,7 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
         Transformation<Object> dppTransformation = sink.translateToPlan(planner);
 
         if (skipDependencyEdge) {
+            planner.addExtraTransformation(dppTransformation);
             return transformation;
         }
 

@@ -74,7 +74,7 @@ public class DppOmitDependencyProcessor implements ExecNodeGraphProcessor {
                 ExecNode<?> next = entry.getValue().get(0);
                 if (next instanceof BatchExecMultipleInput) {
                     ((BatchExecTableSourceScan) entry.getKey()).setSkipDependencyEdge(true);
-                    System.out.println("Set " + entry.getKey() + " to use chain");
+                    System.out.println("Set " + entry.getKey() + " to use chain 1");
                     continue;
                 }
 
@@ -90,7 +90,8 @@ public class DppOmitDependencyProcessor implements ExecNodeGraphProcessor {
                                                 .getType())
                         && dppScanDescendants.get(next).get(0) instanceof BatchExecMultipleInput) {
                     ((BatchExecTableSourceScan) entry.getKey()).setSkipDependencyEdge(true);
-                    System.out.println("Set " + entry.getKey() + " to use chain");
+                    System.out.println("Set " + entry.getKey() + " to use chain 2");
+                    System.out.println("Using " + next);
                 }
             }
         }
