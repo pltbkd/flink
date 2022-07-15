@@ -188,7 +188,7 @@ public class TpcdsTestProgram {
         return tEnv;
     }
 
-    private static String loadFile2String(String filePath) throws Exception {
+    public static String loadFile2String(String filePath) throws Exception {
         StringBuilder stringBuilder = new StringBuilder();
         Stream<String> stream = Files.lines(Paths.get(filePath), StandardCharsets.UTF_8);
         stream.forEach(s -> stringBuilder.append(s).append('\n'));

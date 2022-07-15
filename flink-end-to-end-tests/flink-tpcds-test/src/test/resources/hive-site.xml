@@ -43,7 +43,7 @@
 
 	<property>
 		<name>hive.metastore.uris</name>
-		<value>thrift://xxx:9083</value>
+		<value>thrift://localhost:9083</value>
 	</property>
 
 	<property>

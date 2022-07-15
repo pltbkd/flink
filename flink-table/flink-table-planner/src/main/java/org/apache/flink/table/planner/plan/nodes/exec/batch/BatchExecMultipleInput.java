@@ -96,6 +96,10 @@ public class BatchExecMultipleInput extends ExecNodeBase<RowData>
         this.originalEdges = originalEdges;
     }
 
+    public ExecNode<?> getRootNode() {
+        return rootNode;
+    }
+
     @Override
     protected Transformation<RowData> translateToPlanInternal(
             PlannerBase planner, ExecNodeConfig config) {

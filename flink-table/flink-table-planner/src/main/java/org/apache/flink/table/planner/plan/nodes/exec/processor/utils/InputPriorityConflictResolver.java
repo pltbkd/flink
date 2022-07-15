@@ -120,6 +120,15 @@ public class InputPriorityConflictResolver extends InputPriorityGraphGenerator {
         // if yes then conflict is caused by `lowerNode`
         ConflictCausedByExchangeChecker checker = new ConflictCausedByExchangeChecker(lowerNode);
         checker.visit(higherNode);
+
+        System.out.println(
+                "check higher = "
+                        + higherNode
+                        + " low = "
+                        + lowerNode
+                        + ", result  ="
+                        + checker.found);
+
         return checker.found;
     }
 

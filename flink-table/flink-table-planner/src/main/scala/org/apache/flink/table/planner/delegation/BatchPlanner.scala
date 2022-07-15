@@ -29,7 +29,7 @@ import org.apache.flink.table.operations.{ModifyOperation, Operation}
 import org.apache.flink.table.planner.plan.`trait`.FlinkRelDistributionTraitDef
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeGraph
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecNode
-import org.apache.flink.table.planner.plan.nodes.exec.processor.{DeadlockBreakupProcessor, DppOmitDependencyProcessor, ExecNodeGraphProcessor, ForwardHashExchangeProcessor, MultipleInputNodeCreationProcessor, ResetTransformationProcessor}
+import org.apache.flink.table.planner.plan.nodes.exec.processor.{DeadlockBreakupProcessor, DppOmitDependencyProcessor, ExecNodeGraphProcessor, ForwardHashExchangeProcessor, MultipleInputNodeCreationProcessor, OutputGraphProcessor, ResetTransformationProcessor}
 import org.apache.flink.table.planner.plan.nodes.exec.utils.ExecNodePlanDumper
 import org.apache.flink.table.planner.plan.optimize.{BatchCommonSubGraphBasedOptimizer, Optimizer}
 import org.apache.flink.table.planner.plan.utils.FlinkRelOptUtil
@@ -70,16 +70,20 @@ class BatchPlanner(
   override protected def getExecNodeGraphProcessors: Seq[ExecNodeGraphProcessor] = {
     val processors = new util.ArrayList[ExecNodeGraphProcessor]()
     // deadlock breakup
+    // processors.add(new OutputGraphProcessor())
     processors.add(new DeadlockBreakupProcessor())
+    // processors.add(new OutputGraphProcessor())
     // multiple input creation
     if (getTableConfig.get(OptimizerConfigOptions.TABLE_OPTIMIZER_MULTIPLE_INPUT_ENABLED)) {
       processors.add(new MultipleInputNodeCreationProcessor(false))
     }
     processors.add(new ForwardHashExchangeProcessor)
     processors.add(new ResetTransformationProcessor)
+
     if (getTableConfig.get(DynamicPartitionPruningRule.TABLE_OPTIMIZER_DPP_ENABLED)) {
       processors.add(new DppOmitDependencyProcessor)
     }
+    processors.add(new OutputGraphProcessor())
     processors
   }
 

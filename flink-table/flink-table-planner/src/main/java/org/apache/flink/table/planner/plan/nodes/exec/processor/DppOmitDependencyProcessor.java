@@ -29,9 +29,12 @@ import org.apache.flink.table.planner.plan.nodes.exec.visitor.AbstractExecNodeEx
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static org.apache.flink.util.Preconditions.checkState;
 
 public class DppOmitDependencyProcessor implements ExecNodeGraphProcessor {
 
@@ -64,6 +67,8 @@ public class DppOmitDependencyProcessor implements ExecNodeGraphProcessor {
                 };
         execGraph.getRootNodes().forEach(node -> node.accept(dppScanCollector));
 
+        List<ExecNode<?>> roots = new ArrayList<>(execGraph.getRootNodes());
+
         // Let's now check if there are chain
         for (Map.Entry<ExecNode<?>, List<ExecNode<?>>> entry : dppScanDescendants.entrySet()) {
             if (entry.getKey() instanceof BatchExecTableSourceScan) {
@@ -89,13 +94,63 @@ public class DppOmitDependencyProcessor implements ExecNodeGraphProcessor {
                                                 .getRequiredDistribution()
                                                 .getType())
                         && dppScanDescendants.get(next).get(0) instanceof BatchExecMultipleInput) {
-                    ((BatchExecTableSourceScan) entry.getKey()).setSkipDependencyEdge(true);
+
+                    BatchExecTableSourceScan source = (BatchExecTableSourceScan) entry.getKey();
+                    BatchExecExchange exchange = (BatchExecExchange) next;
+                    BatchExecMultipleInput multipleInput =
+                            (BatchExecMultipleInput) dppScanDescendants.get(next).get(0);
+
+                    ExecEdge edge = ExecEdge.builder().source(source).target(multipleInput).build();
+
+                    int outEdgeIndex = findEdge(multipleInput.getInputEdges(), exchange);
+                    checkState(outEdgeIndex >= 0, "The out edge not found");
+                    multipleInput.replaceInputEdge(outEdgeIndex, edge);
+                    System.out.println(
+                            "replace outEdgeIndex "
+                                    + multipleInput.getInputEdges().get(outEdgeIndex));
+
+                    // Also change the input edge
+                    replaceInnerEdge(multipleInput.getRootNode(), exchange, edge);
+
+                    // Now move dpp sink to the root
+                    roots.add(source.getInputEdges().get(0).getSource());
+                    source.setInputEdges(Collections.emptyList());
+
                     System.out.println("Set " + entry.getKey() + " to use chain 2");
                     System.out.println("Using " + next);
                 }
             }
         }
 
-        return execGraph;
+        // return execGraph;
+        return new ExecNodeGraph(execGraph.getFlinkVersion(), roots);
+    }
+
+    public void replaceInnerEdge(ExecNode<?> root, ExecNode<?> targetSource, ExecEdge newEdge) {
+        int possibleIndex = findEdge(root.getInputEdges(), targetSource);
+        if (possibleIndex >= 0) {
+            System.out.println(
+                    "Replace inner edge "
+                            + root.getInputEdges().get(possibleIndex)
+                            + " to "
+                            + newEdge);
+            root.replaceInputEdge(possibleIndex, newEdge);
+            return;
+        }
+
+        // lets continue the search
+        root.getInputEdges().stream()
+                .map(ExecEdge::getSource)
+                .forEach(node -> replaceInnerEdge(node, targetSource, newEdge));
+    }
+
+    public int findEdge(List<ExecEdge> edges, ExecNode<?> targetSource) {
+        for (int i = 0; i < edges.size(); ++i) {
+            if (edges.get(i).getSource().equals(targetSource)) {
+                return i;
+            }
+        }
+
+        return -1;
     }
 }

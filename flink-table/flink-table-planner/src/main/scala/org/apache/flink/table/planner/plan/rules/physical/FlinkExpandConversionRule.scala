@@ -48,6 +48,7 @@ class FlinkExpandConversionRule(flinkConvention: Convention)
     val converter: AbstractConverter = call.rel(0)
     val child: RelNode = call.rel(1)
     val toTraitSet = converter.getTraitSet
+
     // try to satisfy required trait by itself.
     satisfyTraitsBySelf(child, toTraitSet, call)
     // try to push down required traits to children.
@@ -68,6 +69,7 @@ class FlinkExpandConversionRule(flinkConvention: Convention)
       val toCollation = requiredTraits.getTrait(RelCollationTraitDef.INSTANCE)
       transformedNode = satisfyCollation(flinkConvention, transformedNode, toCollation)
     }
+
     checkSatisfyRequiredTrait(transformedNode, requiredTraits)
     call.transformTo(transformedNode)
   }

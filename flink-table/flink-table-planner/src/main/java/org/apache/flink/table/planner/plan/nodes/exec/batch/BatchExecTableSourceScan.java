@@ -87,10 +87,11 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
 
         List<ExecEdge> edges = getInputEdges();
         if (edges.size() == 0) {
+            // Case 1. No input edges, the dynamic sink might not exists or created via roots of
+            // exec graph
             return transformation;
         }
 
-        // Now ...
         CompletableFuture<byte[]> sourceOperatorIdFuture =
                 ((SourceTransformation<?, ?, ?>) transformation).getSource().getOperatorIdFuture();
 
@@ -100,10 +101,12 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
         Transformation<Object> dppTransformation = sink.translateToPlan(planner);
 
         if (skipDependencyEdge) {
+            // Case 2. source -> Multiple without exchange, this should not happen in fact.
             planner.addExtraTransformation(dppTransformation);
             return transformation;
         }
 
+        // Case 3. The dependency edge is required.
         MultipleInputTransformation<RowData> multipleInputTransformation =
                 new MultipleInputTransformation<>(
                         "Placeholder-Filter",
