@@ -51,6 +51,8 @@ import java.util.concurrent.CompletableFuture;
 public class BatchExecTableSourceScan extends CommonExecTableSourceScan
         implements BatchExecNode<RowData> {
 
+    private BatchExecDynamicPartitionSink cachedDppSink;
+
     private boolean skipDependencyEdge;
 
     public BatchExecTableSourceScan(
@@ -75,6 +77,10 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
         this.skipDependencyEdge = skipDependencyEdge;
     }
 
+    public void setCachedDppSink(BatchExecDynamicPartitionSink cachedDppSink) {
+        this.cachedDppSink = cachedDppSink;
+    }
+
     @Override
     protected Transformation<RowData> translateToPlanInternal(
             PlannerBase planner, ExecNodeConfig config) {
@@ -85,15 +91,21 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
 
         System.out.println("Translate " + this + ", skipDependencyEdge = " + skipDependencyEdge);
 
+        CompletableFuture<byte[]> sourceOperatorIdFuture =
+                ((SourceTransformation<?, ?, ?>) transformation).getSource().getOperatorIdFuture();
         List<ExecEdge> edges = getInputEdges();
         if (edges.size() == 0) {
             // Case 1. No input edges, the dynamic sink might not exists or created via roots of
             // exec graph
+
+            if (cachedDppSink != null) {
+                cachedDppSink.addSourceOperatorIdFuture(sourceOperatorIdFuture);
+                Transformation<Object> dppTransformation = cachedDppSink.translateToPlan(planner);
+                planner.addExtraTransformation(dppTransformation);
+            }
+
             return transformation;
         }
-
-        CompletableFuture<byte[]> sourceOperatorIdFuture =
-                ((SourceTransformation<?, ?, ?>) transformation).getSource().getOperatorIdFuture();
 
         BatchExecDynamicPartitionSink sink =
                 (BatchExecDynamicPartitionSink) edges.get(0).getSource();

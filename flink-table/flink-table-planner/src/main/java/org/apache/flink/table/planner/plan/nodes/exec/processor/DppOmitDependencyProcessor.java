@@ -22,6 +22,7 @@ import org.apache.flink.table.planner.plan.nodes.exec.ExecEdge;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeGraph;
 import org.apache.flink.table.planner.plan.nodes.exec.InputProperty;
+import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecDynamicPartitionSink;
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecExchange;
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecMultipleInput;
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecTableSourceScan;
@@ -67,8 +68,6 @@ public class DppOmitDependencyProcessor implements ExecNodeGraphProcessor {
                 };
         execGraph.getRootNodes().forEach(node -> node.accept(dppScanCollector));
 
-        List<ExecNode<?>> roots = new ArrayList<>(execGraph.getRootNodes());
-
         // Let's now check if there are chain
         for (Map.Entry<ExecNode<?>, List<ExecNode<?>>> entry : dppScanDescendants.entrySet()) {
             if (entry.getKey() instanceof BatchExecTableSourceScan) {
@@ -113,7 +112,9 @@ public class DppOmitDependencyProcessor implements ExecNodeGraphProcessor {
                     replaceInnerEdge(multipleInput.getRootNode(), exchange, edge);
 
                     // Now move dpp sink to the root
-                    roots.add(source.getInputEdges().get(0).getSource());
+                    source.setCachedDppSink(
+                            (BatchExecDynamicPartitionSink)
+                                    source.getInputEdges().get(0).getSource());
                     source.setInputEdges(Collections.emptyList());
 
                     System.out.println("Set " + entry.getKey() + " to use chain 2");
@@ -122,8 +123,7 @@ public class DppOmitDependencyProcessor implements ExecNodeGraphProcessor {
             }
         }
 
-        // return execGraph;
-        return new ExecNodeGraph(execGraph.getFlinkVersion(), roots);
+        return execGraph;
     }
 
     public void replaceInnerEdge(ExecNode<?> root, ExecNode<?> targetSource, ExecEdge newEdge) {

@@ -102,5 +102,7 @@ public class PlannerTest {
         for (JobVertex vertex : jobGraph.getVerticesSortedTopologicallyFromSources()) {
             System.out.println("JobVertex" + ":" + vertex);
         }
+
+        tEnv.executeSql(queryString);
     }
 }
