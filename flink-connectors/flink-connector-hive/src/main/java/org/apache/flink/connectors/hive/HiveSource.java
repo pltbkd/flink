@@ -44,7 +44,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * A unified data source that reads a hive table. HiveSource works on {@link HiveSourceSplit} and
@@ -66,7 +65,6 @@ public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
     private final ContinuousPartitionFetcher<Partition, ?> fetcher;
     private final HiveTableSource.HiveContinuousPartitionFetcherContext<?> fetcherContext;
     private final ObjectPath tablePath;
-    private final transient CompletableFuture<byte[]> operatorIdFuture;
 
     HiveSource(
             Path[] inputPaths,
@@ -95,12 +93,6 @@ public class HiveSource<T> extends AbstractFileSource<T, HiveSourceSplit> {
         this.partitions = partitions;
         this.fetcher = fetcher;
         this.fetcherContext = fetcherContext;
-        this.operatorIdFuture = new CompletableFuture<>();
-    }
-
-    @Override
-    public CompletableFuture<byte[]> getOperatorIdFuture() {
-        return operatorIdFuture;
     }
 
     @Override

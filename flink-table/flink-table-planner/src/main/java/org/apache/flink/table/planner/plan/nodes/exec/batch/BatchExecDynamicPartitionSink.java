@@ -21,7 +21,7 @@ package org.apache.flink.table.planner.plan.nodes.exec.batch;
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
-import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
+import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.planner.delegation.PlannerBase;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecEdge;
@@ -37,7 +37,6 @@ import org.apache.flink.table.types.logical.RowType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 
@@ -46,7 +45,7 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
         implements BatchExecNode<Object> {
 
     private final List<Integer> partitionFields;
-    private transient List<CompletableFuture<byte[]>> sourceOperatorIdFutures = new ArrayList<>();
+    private final List<String> partitionDataListenerIDs;
 
     public BatchExecDynamicPartitionSink(
             List<Integer> partitionFields,
@@ -62,11 +61,8 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
                 outputType,
                 description);
         this.partitionFields = partitionFields;
+        this.partitionDataListenerIDs = new ArrayList<>();
         checkArgument(outputType.getFieldCount() == partitionFields.size());
-    }
-
-    public void addSourceOperatorIdFuture(CompletableFuture<byte[]> sourceOperatorIdFuture) {
-        this.sourceOperatorIdFutures.add(sourceOperatorIdFuture);
     }
 
     @Override
@@ -76,9 +72,9 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
         final ExecEdge inputEdge = getInputEdges().get(0);
         final Transformation<RowData> inputTransform =
                 (Transformation<RowData>) inputEdge.translateToPlan(planner);
-        SimpleOperatorFactory<Object> factory =
+        StreamOperatorFactory<Object> factory =
                 new DynamicPartitionOperatorFactory(
-                        sourceOperatorIdFutures, (RowType) getOutputType(), partitionFields);
+                        (RowType) getOutputType(), partitionFields, partitionDataListenerIDs);
         factory.setChainingStrategy(ChainingStrategy.ALWAYS);
 
         return ExecNodeUtil.createOneInputTransformation(
@@ -88,5 +84,9 @@ public class BatchExecDynamicPartitionSink extends ExecNodeBase<Object>
                 factory,
                 InternalTypeInfo.of(getOutputType()),
                 1); // parallelism should always be 1
+    }
+
+    public void registerPartitionDataListenerID(String id) {
+        this.partitionDataListenerIDs.add(id);
     }
 }

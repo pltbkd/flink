@@ -21,18 +21,27 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequestHandler;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.runtime.operators.coordination.CoordinatorStore;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 
 import javax.annotation.Nullable;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /** DynamicPartitionSinkOperatorCoordinator. */
 public class DynamicPartitionOperatorCoordinator
         implements OperatorCoordinator, CoordinationRequestHandler {
 
-    public DynamicPartitionOperatorCoordinator() {}
+    private final CoordinatorStore coordinatorStore;
+    private final List<String> partitionDataListenerIDs;
+
+    public DynamicPartitionOperatorCoordinator(
+            Context context, List<String> partitionDataListenerIDs) {
+        this.coordinatorStore = context.getCoordinatorStore();
+        this.partitionDataListenerIDs = partitionDataListenerIDs;
+    }
 
     @Override
     public void start() throws Exception {}
@@ -41,12 +50,21 @@ public class DynamicPartitionOperatorCoordinator
     public void close() throws Exception {}
 
     @Override
-    public void handleEventFromOperator(int subtask, OperatorEvent event) throws Exception {}
+    public void handleEventFromOperator(int subtask, OperatorEvent event) throws Exception {
+        for (String listenerID : partitionDataListenerIDs) {
+            // push event
+            OperatorCoordinator listener = (OperatorCoordinator) coordinatorStore.get(listenerID);
+            if (listener == null) {
+                throw new IllegalStateException("Partition data listener missing");
+            }
+            listener.handleEventFromOperator(0, event);
+        }
+    }
 
     @Override
     public CompletableFuture<CoordinationResponse> handleCoordinationRequest(
             CoordinationRequest request) {
-        return new CompletableFuture<>();
+        throw new UnsupportedOperationException();
     }
 
     @Override
@@ -78,21 +96,22 @@ public class DynamicPartitionOperatorCoordinator
     /** Provider for {@link DynamicPartitionOperatorCoordinator}. */
     public static class Provider implements OperatorCoordinator.Provider {
 
-        private final OperatorID operatorId;
+        private final OperatorID operatorID;
+        private final List<String> partitionDataListenerIDs;
 
-        public Provider(OperatorID operatorId) {
-            this.operatorId = operatorId;
+        public Provider(OperatorID operatorID, List<String> partitionDataListenerIDs) {
+            this.operatorID = operatorID;
+            this.partitionDataListenerIDs = partitionDataListenerIDs;
         }
 
         @Override
         public OperatorID getOperatorId() {
-            return operatorId;
+            return operatorID;
         }
 
         @Override
         public OperatorCoordinator create(Context context) {
-            // we do not send operator event so we don't need a context
-            return new DynamicPartitionOperatorCoordinator();
+            return new DynamicPartitionOperatorCoordinator(context, partitionDataListenerIDs);
         }
     }
 }

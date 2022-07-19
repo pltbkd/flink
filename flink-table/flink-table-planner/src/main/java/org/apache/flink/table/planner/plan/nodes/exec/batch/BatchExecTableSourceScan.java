@@ -39,10 +39,11 @@ import org.apache.flink.table.planner.plan.nodes.exec.utils.ExecNodeUtil;
 import org.apache.flink.table.runtime.operators.dpp.DppFilterOperatorFactory;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.util.Preconditions;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.UUID;
 
 /**
  * Batch {@link ExecNode} to read data from an external source defined by a bounded {@link
@@ -91,15 +92,16 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
 
         System.out.println("Translate " + this + ", skipDependencyEdge = " + skipDependencyEdge);
 
-        CompletableFuture<byte[]> sourceOperatorIdFuture =
-                ((SourceTransformation<?, ?, ?>) transformation).getSource().getOperatorIdFuture();
         List<ExecEdge> edges = getInputEdges();
         if (edges.size() == 0) {
             // Case 1. No input edges, the dynamic sink might not exists or created via roots of
             // exec graph
 
             if (cachedDppSink != null) {
-                cachedDppSink.addSourceOperatorIdFuture(sourceOperatorIdFuture);
+                String partitionDataListenerID = UUID.randomUUID().toString();
+                ((SourceTransformation<?, ?, ?>) transformation)
+                        .setCoordinatorListeningID(partitionDataListenerID);
+                cachedDppSink.registerPartitionDataListenerID(String.valueOf(transformation.getId()));
                 Transformation<Object> dppTransformation = cachedDppSink.translateToPlan(planner);
                 planner.addExtraTransformation(dppTransformation);
             }
@@ -109,7 +111,10 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
 
         BatchExecDynamicPartitionSink sink =
                 (BatchExecDynamicPartitionSink) edges.get(0).getSource();
-        sink.addSourceOperatorIdFuture(sourceOperatorIdFuture);
+        String partitionDataListenerID = UUID.randomUUID().toString();
+        ((SourceTransformation<?, ?, ?>) transformation)
+                .setCoordinatorListeningID(partitionDataListenerID);
+        sink.registerPartitionDataListenerID(String.valueOf(transformation.getId()));
         Transformation<Object> dppTransformation = sink.translateToPlan(planner);
 
         if (skipDependencyEdge) {
