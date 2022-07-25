@@ -33,6 +33,7 @@ import org.apache.flink.runtime.source.coordinator.SourceCoordinatorProvider;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeServiceAware;
 import org.apache.flink.util.function.FunctionWithException;
+import org.apache.flink.util.function.SerializableFunction;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -55,6 +56,7 @@ public class SourceOperatorFactory<OUT> extends AbstractStreamOperatorFactory<OU
     private final int numCoordinatorWorkerThread;
 
     private String coordinatorListeningID;
+    private SerializableFunction<Object, Object[]> runtimeFilterKeysExtractor;
 
     public SourceOperatorFactory(
             Source<OUT, ?, ?> source, WatermarkStrategy<OUT> watermarkStrategy) {
@@ -85,6 +87,11 @@ public class SourceOperatorFactory<OUT> extends AbstractStreamOperatorFactory<OU
 
     public void setCoordinatorListeningID(String coordinatorListeningID) {
         this.coordinatorListeningID = coordinatorListeningID;
+    }
+
+    public void setRuntimeFilterKeysExtractor(
+            SerializableFunction<Object, Object[]> runtimeFilterKeysExtractor) {
+        this.runtimeFilterKeysExtractor = runtimeFilterKeysExtractor;
     }
 
     @Override
@@ -118,6 +125,7 @@ public class SourceOperatorFactory<OUT> extends AbstractStreamOperatorFactory<OU
                 parameters.getStreamConfig(),
                 parameters.getOutput());
         parameters.getOperatorEventDispatcher().registerEventHandler(operatorId, sourceOperator);
+        sourceOperator.setRuntimeFilterKeysExtractor(runtimeFilterKeysExtractor);
 
         // today's lunch is generics spaghetti
         @SuppressWarnings("unchecked")

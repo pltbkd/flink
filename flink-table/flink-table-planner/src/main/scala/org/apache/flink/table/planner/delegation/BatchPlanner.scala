@@ -32,14 +32,16 @@ import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecNode
 import org.apache.flink.table.planner.plan.nodes.exec.processor.{DeadlockBreakupProcessor, DppOmitDependencyProcessor, ExecNodeGraphProcessor, ForwardHashExchangeProcessor, MultipleInputNodeCreationProcessor, OutputGraphProcessor, ResetTransformationProcessor}
 import org.apache.flink.table.planner.plan.nodes.exec.utils.ExecNodePlanDumper
 import org.apache.flink.table.planner.plan.optimize.{BatchCommonSubGraphBasedOptimizer, Optimizer}
+import org.apache.flink.table.planner.plan.rules.physical.batch.DynamicPartitionPruningRule
 import org.apache.flink.table.planner.plan.utils.FlinkRelOptUtil
 import org.apache.flink.table.planner.utils.DummyStreamExecutionEnvironment
+
 import org.apache.calcite.plan.{ConventionTraitDef, RelTrait, RelTraitDef}
 import org.apache.calcite.rel.RelCollationTraitDef
 import org.apache.calcite.sql.SqlExplainLevel
-import org.apache.flink.table.planner.plan.rules.physical.batch.DynamicPartitionPruningRule
 
 import java.util
+
 import scala.collection.JavaConversions._
 
 class BatchPlanner(
@@ -71,19 +73,24 @@ class BatchPlanner(
     val processors = new util.ArrayList[ExecNodeGraphProcessor]()
     // deadlock breakup
     // processors.add(new OutputGraphProcessor())
+    processors.add(new OutputGraphProcessor("DeadlockBreakupProcessor"))
     processors.add(new DeadlockBreakupProcessor())
     // processors.add(new OutputGraphProcessor())
     // multiple input creation
+    processors.add(new OutputGraphProcessor("MultipleInputNodeCreationProcessor"))
     if (getTableConfig.get(OptimizerConfigOptions.TABLE_OPTIMIZER_MULTIPLE_INPUT_ENABLED)) {
       processors.add(new MultipleInputNodeCreationProcessor(false))
     }
+    processors.add(new OutputGraphProcessor("ForwardHashExchangeProcessor"))
     processors.add(new ForwardHashExchangeProcessor)
+    processors.add(new OutputGraphProcessor("ResetTransformationProcessor"))
     processors.add(new ResetTransformationProcessor)
 
+    processors.add(new OutputGraphProcessor("DppOmitDependencyProcessor"))
     if (getTableConfig.get(DynamicPartitionPruningRule.TABLE_OPTIMIZER_DPP_ENABLED)) {
       processors.add(new DppOmitDependencyProcessor)
     }
-    processors.add(new OutputGraphProcessor())
+    processors.add(new OutputGraphProcessor("Done"))
     processors
   }
 

@@ -18,8 +18,7 @@
 package org.apache.flink.table.planner.plan.rules
 
 import org.apache.flink.table.planner.plan.nodes.logical._
-import org.apache.flink.table.planner.plan.rules.logical.{RemoveUnreachableCoalesceArgumentsRule, _}
-import org.apache.flink.table.planner.plan.rules.logical.JoinToMultiJoinRule
+import org.apache.flink.table.planner.plan.rules.logical.{JoinToMultiJoinRule, _}
 import org.apache.flink.table.planner.plan.rules.physical.FlinkExpandConversionRule
 import org.apache.flink.table.planner.plan.rules.physical.batch._
 
@@ -436,13 +435,14 @@ object FlinkBatchRuleSets {
     PushLocalSortAggWithSortIntoScanRule.INSTANCE,
     PushLocalSortAggWithCalcIntoScanRule.INSTANCE,
     PushLocalSortAggWithSortAndCalcIntoScanRule.INSTANCE,
-    DynamicPartitionPruningRule1.FACT_IN_RIGHT,
-    DynamicPartitionPruningRule2.FACT_IN_LEFT,
-    DynamicPartitionPruningRule3.FACT_IN_RIGHT,
-    DynamicPartitionPruningRule4.FACT_IN_LEFT,
-    DynamicPartitionPruningRule5.FACT_IN_RIGHT,
-    DynamicPartitionPruningRule6.FACT_IN_LEFT,
-    DynamicPartitionPruningRule7.FACT_IN_RIGHT,
-    DynamicPartitionPruningRule8.FACT_IN_LEFT
+//    DynamicPartitionPruningRule1.FACT_IN_RIGHT,
+//    DynamicPartitionPruningRule2.FACT_IN_LEFT,
+//    DynamicPartitionPruningRule3.FACT_IN_RIGHT,
+//    DynamicPartitionPruningRule4.FACT_IN_LEFT,
+//    DynamicPartitionPruningRule5.FACT_IN_RIGHT,
+//    DynamicPartitionPruningRule6.FACT_IN_LEFT,
+//    DynamicPartitionPruningRule7.FACT_IN_RIGHT,
+//    DynamicPartitionPruningRule8.FACT_IN_LEFT
+    RuntimeFilterRule.INSTANCE
   )
 }

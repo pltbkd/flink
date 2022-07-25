@@ -26,15 +26,23 @@ import org.apache.commons.lang3.StringUtils;
 
 public class OutputGraphProcessor implements ExecNodeGraphProcessor {
 
+    private final String header;
+
+    public OutputGraphProcessor(String header) {
+        this.header = header;
+    }
+
     @Override
     public ExecNodeGraph process(ExecNodeGraph execGraph, ProcessorContext context) {
+        System.out.println(header);
         AbstractExecNodeExactlyOnceVisitor dppScanCollector =
                 new AbstractExecNodeExactlyOnceVisitor() {
                     int indent = 0;
 
                     @Override
                     protected void visitNode(ExecNode<?> node) {
-                        System.out.println(StringUtils.repeat("  ", indent) + "|-" + node.getDescription());
+                        System.out.println(
+                                StringUtils.repeat("  ", indent) + "|-" + node.getDescription());
                         indent += 4;
                         visitInputs(node);
                         indent -= 4;

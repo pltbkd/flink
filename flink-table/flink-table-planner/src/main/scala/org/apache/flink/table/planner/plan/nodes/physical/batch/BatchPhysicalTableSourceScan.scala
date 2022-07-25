@@ -22,11 +22,13 @@ import org.apache.calcite.plan.hep.HepRelVertex
 import org.apache.calcite.rel.hint.RelHint
 import org.apache.calcite.rel.metadata.RelMetadataQuery
 import org.apache.calcite.rel.{RelNode, RelWriter}
+import org.apache.calcite.util.mapping.IntPair
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecTableSourceScan
 import org.apache.flink.table.planner.plan.nodes.exec.spec.DynamicTableSourceSpec
 import org.apache.flink.table.planner.plan.nodes.physical.common.CommonPhysicalTableSourceScan
+import org.apache.flink.table.planner.plan.rules.physical.batch.RuntimeFilterRule.BatchPhysicalRuntimeFilterBuilder
 import org.apache.flink.table.planner.plan.schema.TableSourceTable
 import org.apache.flink.table.planner.utils.ShortcutUtils.unwrapTableConfig
 
@@ -38,53 +40,118 @@ import java.util.Collections
  * [[org.apache.flink.table.connector.source.ScanTableSource]].
  */
 class BatchPhysicalTableSourceScan(
-  cluster: RelOptCluster,
-  traitSet: RelTraitSet,
-  hints: util.List[RelHint],
-  tableSourceTable: TableSourceTable,
-  var dppSink: RelNode = null)
+    cluster: RelOptCluster,
+    traitSet: RelTraitSet,
+    hints: util.List[RelHint],
+    tableSourceTable: TableSourceTable,
+    var dppSink: RelNode = null,
+    var df: RelNode = null,
+    var dfUUID: String = null,
+    var joinKeys: java.util.List[IntPair] = null)
   extends CommonPhysicalTableSourceScan(cluster, traitSet, hints, tableSourceTable)
-    with BatchPhysicalRel {
+  with BatchPhysicalRel {
 
   def copy(
-    traitSet: RelTraitSet,
-    tableSourceTable: TableSourceTable): BatchPhysicalTableSourceScan = {
-    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, tableSourceTable, dppSink)
+      traitSet: RelTraitSet,
+      tableSourceTable: TableSourceTable): BatchPhysicalTableSourceScan = {
+    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, tableSourceTable, dppSink, df)
   }
 
   def copy(
-    newTableSourceTable: TableSourceTable, newDppSink: BatchPhysicalDynamicPartitionSink): BatchPhysicalTableSourceScan = {
-    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, newTableSourceTable, newDppSink)
+      newTableSourceTable: TableSourceTable,
+      newDppSink: BatchPhysicalDynamicPartitionSink): BatchPhysicalTableSourceScan = {
+    new BatchPhysicalTableSourceScan(
+      cluster,
+      traitSet,
+      getHints,
+      newTableSourceTable,
+      newDppSink,
+      df,
+      dfUUID,
+      joinKeys)
+  }
+
+  def copy(
+      newTableSourceTable: TableSourceTable,
+      newDf: BatchPhysicalRuntimeFilterBuilder,
+      dfUUID: String,
+      joinKeys: java.util.List[IntPair]): BatchPhysicalTableSourceScan = {
+    new BatchPhysicalTableSourceScan(
+      cluster,
+      traitSet,
+      getHints,
+      newTableSourceTable,
+      dppSink,
+      newDf,
+      dfUUID,
+      joinKeys)
   }
 
   override def copy(traitSet: RelTraitSet, inputs: java.util.List[RelNode]): RelNode = {
-    new BatchPhysicalTableSourceScan(cluster, traitSet, getHints, tableSourceTable, if (inputs.size() == 0) null else inputs.get(0))
+    val input = if (inputs.size() == 0) null else inputs.get(0)
+    val inputType =
+      if (inputs.size() == 0) -1
+      else {
+        inputs.get(0) match {
+          case vertex: HepRelVertex =>
+            vertex.getCurrentRel match {
+              case _: BatchPhysicalDynamicPartitionSink => 0
+              case _: BatchPhysicalRuntimeFilterBuilder => 1
+              case _ => -1
+            }
+          case _: BatchPhysicalDynamicPartitionSink => 0
+          case _: BatchPhysicalRuntimeFilterBuilder => 1
+          case _ => -1
+        }
+      }
+    new BatchPhysicalTableSourceScan(
+      cluster,
+      traitSet,
+      getHints,
+      tableSourceTable,
+      if (inputType == 0) input else null,
+      if (inputType == 1) input else null,
+      dfUUID,
+      joinKeys)
   }
 
   override def replaceInput(ordinalInParent: Int, p: RelNode): Unit = {
     if (ordinalInParent == 0) {
-      dppSink = p
+      p match {
+        case p: BatchPhysicalDynamicPartitionSink =>
+          dppSink = p
+        case p: BatchPhysicalRuntimeFilterBuilder =>
+          df = p;
+          assert(dfUUID != null)
+          assert(joinKeys != null)
+      }
     }
   }
 
   override def getInputs: util.List[RelNode] = {
-    if (dppSink == null) {
-      Collections.emptyList();
+    val input = getInput(0)
+    if (input == null) {
+      Collections.emptyList()
     } else {
-      Collections.singletonList(dppSink)
+      Collections.singletonList(input)
     }
   }
 
   override def getInput(i: Int): RelNode = {
-    if (dppSink == null || i != 0) {
+    if (i != 0) {
       null
-    } else {
+    } else if (dppSink != null) {
       dppSink
+    } else if (df != null) {
+      df
+    } else {
+      null
     }
   }
 
   override def explainTerms(pw: RelWriter): RelWriter = {
     pw.itemIf("dpp", dppSink, dppSink != null)
+    pw.itemIf("df", df, df != null)
     super.explainTerms(pw)
   }
 
@@ -110,6 +177,9 @@ class BatchPhysicalTableSourceScan(
       tableSourceSpec,
       FlinkTypeFactory.toLogicalRowType(getRowType),
       getRelDetailedDescription,
-      dppSink != null)
+      dppSink != null,
+      df != null,
+      dfUUID,
+      joinKeys)
   }
 }

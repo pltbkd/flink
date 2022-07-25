@@ -26,6 +26,7 @@ import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeutils.base.array.BytePrimitiveArraySerializer;
 import org.apache.flink.api.connector.source.ReaderOutput;
 import org.apache.flink.api.connector.source.SourceEvent;
+import org.apache.flink.api.connector.source.SourceOutput;
 import org.apache.flink.api.connector.source.SourceReader;
 import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.api.connector.source.SourceSplit;
@@ -33,6 +34,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.core.memory.MemorySegmentFactory;
 import org.apache.flink.metrics.groups.SourceReaderMetricGroup;
 import org.apache.flink.runtime.io.AvailabilityProvider;
 import org.apache.flink.runtime.io.network.api.StopMode;
@@ -40,6 +42,8 @@ import org.apache.flink.runtime.metrics.groups.InternalSourceReaderMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.OperatorEventGateway;
 import org.apache.flink.runtime.operators.coordination.OperatorEventHandler;
+import org.apache.flink.runtime.operators.util.BloomFilter;
+import org.apache.flink.runtime.source.coordinator.RuntimeFilterEvent;
 import org.apache.flink.runtime.source.event.AddSplitEvent;
 import org.apache.flink.runtime.source.event.NoMoreSplitsEvent;
 import org.apache.flink.runtime.source.event.ReaderRegistrationEvent;
@@ -63,13 +67,16 @@ import org.apache.flink.util.CollectionUtil;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.UserCodeClassLoader;
 import org.apache.flink.util.function.FunctionWithException;
+import org.apache.flink.util.function.SerializableFunction;
 
 import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -156,6 +163,9 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
             new SourceOperatorAvailabilityHelper();
 
     private final List<SplitT> outputPendingSplits = new ArrayList<>();
+
+    private SerializableFunction<Object, Object[]> runtimeFilterKeysExtractor;
+    private BloomFilter runtimeFilter;
 
     private enum OperatingMode {
         READING,
@@ -424,6 +434,9 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
 
     private void initializeMainOutput(DataOutput<OUT> output) {
         currentMainOutput = eventTimeLogic.createMainOutput(output, this::onWatermarkEmitted);
+        if (runtimeFilterKeysExtractor != null) {
+            currentMainOutput = new FilteringReaderOutput(currentMainOutput, this::doRuntimeFilter);
+        }
         initializeLatencyMarkerEmitter(output);
         lastInvokedOutput = output;
         // Create per-split output for pending splits added before main output is initialized
@@ -525,12 +538,31 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
         } else if (event instanceof AddSplitEvent) {
             handleAddSplitsEvent(((AddSplitEvent<SplitT>) event));
         } else if (event instanceof SourceEventWrapper) {
-            sourceReader.handleSourceEvents(((SourceEventWrapper) event).getSourceEvent());
+            SourceEvent sourceEvent = ((SourceEventWrapper) event).getSourceEvent();
+            if (sourceEvent instanceof RuntimeFilterEvent) {
+                setRuntimeBloomFilter(
+                        ((RuntimeFilterEvent) sourceEvent).getEstimatedBuildCount(),
+                        ((RuntimeFilterEvent) sourceEvent).getBloomFilterByteSize(),
+                        ((RuntimeFilterEvent) sourceEvent).getFilterBits());
+            } else {
+                sourceReader.handleSourceEvents(((SourceEventWrapper) event).getSourceEvent());
+            }
         } else if (event instanceof NoMoreSplitsEvent) {
             sourceReader.notifyNoMoreSplits();
         } else {
             throw new IllegalStateException("Received unexpected operator event " + event);
         }
+    }
+
+    private void setRuntimeBloomFilter(
+            int estimatedBuildCount, int bloomFilterByteSize, byte[] filterBits) {
+        this.runtimeFilter = new BloomFilter(estimatedBuildCount, bloomFilterByteSize);
+        this.runtimeFilter.setBitsLocation(MemorySegmentFactory.wrap(filterBits), 0);
+    }
+
+    private boolean doRuntimeFilter(OUT out) {
+        return runtimeFilter == null
+                || runtimeFilter.testHash(Arrays.hashCode(runtimeFilterKeysExtractor.apply(out)));
     }
 
     private void handleAddSplitsEvent(AddSplitEvent<SplitT> event) {
@@ -593,6 +625,11 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
                         getRuntimeContext().getIndexOfThisSubtask(), localHostname));
     }
 
+    public void setRuntimeFilterKeysExtractor(
+            SerializableFunction<Object, Object[]> runtimeFilterKeysExtractor) {
+        this.runtimeFilterKeysExtractor = runtimeFilterKeysExtractor;
+    }
+
     // --------------- methods for unit tests ------------
 
     @VisibleForTesting
@@ -627,6 +664,98 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
 
         public void forceStop() {
             forcedStopFuture.complete(null);
+        }
+    }
+
+    private class FilteringReaderOutput implements ReaderOutput<OUT> {
+
+        private final ReaderOutput<OUT> delegatedOutput;
+        private final Function<OUT, Boolean> filter;
+
+        public FilteringReaderOutput(
+                ReaderOutput<OUT> delegatedOutput, Function<OUT, Boolean> filter) {
+            this.delegatedOutput = delegatedOutput;
+            this.filter = filter;
+        }
+
+        @Override
+        public void collect(OUT record) {
+            if (filter.apply(record)) {
+                delegatedOutput.collect(record);
+            }
+        }
+
+        @Override
+        public void collect(OUT record, long timestamp) {
+            if (filter.apply(record)) {
+                delegatedOutput.collect(record, timestamp);
+            }
+        }
+
+        @Override
+        public void emitWatermark(org.apache.flink.api.common.eventtime.Watermark watermark) {
+            delegatedOutput.emitWatermark(watermark);
+        }
+
+        @Override
+        public void markIdle() {
+            delegatedOutput.markIdle();
+        }
+
+        @Override
+        public SourceOutput<OUT> createOutputForSplit(String splitId) {
+            return new FilteringSourceOutput(delegatedOutput.createOutputForSplit(splitId), filter);
+        }
+
+        @Override
+        public void releaseOutputForSplit(String splitId) {
+            delegatedOutput.releaseOutputForSplit(splitId);
+        }
+
+        @Override
+        public void markActive() {
+            delegatedOutput.markActive();
+        }
+    }
+
+    private class FilteringSourceOutput implements SourceOutput<OUT> {
+
+        private final SourceOutput<OUT> delegatedOutput;
+        private final Function<OUT, Boolean> filter;
+
+        public FilteringSourceOutput(
+                SourceOutput<OUT> delegatedOutput, Function<OUT, Boolean> filter) {
+            this.delegatedOutput = delegatedOutput;
+            this.filter = filter;
+        }
+
+        @Override
+        public void emitWatermark(org.apache.flink.api.common.eventtime.Watermark watermark) {
+            delegatedOutput.emitWatermark(watermark);
+        }
+
+        @Override
+        public void markIdle() {
+            delegatedOutput.markIdle();
+        }
+
+        @Override
+        public void markActive() {
+            delegatedOutput.markActive();
+        }
+
+        @Override
+        public void collect(OUT record) {
+            if (filter.apply(record)) {
+                delegatedOutput.collect(record);
+            }
+        }
+
+        @Override
+        public void collect(OUT record, long timestamp) {
+            if (filter.apply(record)) {
+                delegatedOutput.collect(record, timestamp);
+            }
         }
     }
 }

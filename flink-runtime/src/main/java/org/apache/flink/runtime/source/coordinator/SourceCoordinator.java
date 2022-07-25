@@ -111,6 +111,7 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT>
     private boolean started;
 
     private String coordinatorListeningID;
+    private OperatorEvent runtimeFilterEvent;
 
     public SourceCoordinator(
             String operatorName,
@@ -210,7 +211,9 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT>
         // the other methods are invoked after the enumerator has started.
         runInEventLoop(() -> enumerator.start(), "starting the SplitEnumerator.");
 
-        coordinatorStore.putIfAbsent(coordinatorListeningID, this);
+        if (coordinatorListeningID != null) {
+            coordinatorStore.putIfAbsent(coordinatorListeningID, this);
+        }
     }
 
     @Override
@@ -231,17 +234,24 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT>
                                 "Source {} received split request from parallel task {}",
                                 operatorName,
                                 subtask);
+                        if (runtimeFilterEvent != null) {
+                            context.sendEventToSourceOperator(subtask, runtimeFilterEvent);
+                        }
                         enumerator.handleSplitRequest(
                                 subtask, ((RequestSplitEvent) event).hostName());
                     } else if (event instanceof SourceEventWrapper) {
                         final SourceEvent sourceEvent =
                                 ((SourceEventWrapper) event).getSourceEvent();
-                        LOG.debug(
-                                "Source {} received custom event from parallel task {}: {}",
-                                operatorName,
-                                subtask,
-                                sourceEvent);
-                        enumerator.handleSourceEvent(subtask, sourceEvent);
+                        if (sourceEvent instanceof RuntimeFilterEvent) {
+                            this.runtimeFilterEvent = event;
+                        } else {
+                            LOG.debug(
+                                    "Source {} received custom event from parallel task {}: {}",
+                                    operatorName,
+                                    subtask,
+                                    sourceEvent);
+                            enumerator.handleSourceEvent(subtask, sourceEvent);
+                        }
                     } else if (event instanceof ReaderRegistrationEvent) {
                         final ReaderRegistrationEvent registrationEvent =
                                 (ReaderRegistrationEvent) event;

@@ -99,26 +99,31 @@ public class DppOmitDependencyProcessor implements ExecNodeGraphProcessor {
                     BatchExecMultipleInput multipleInput =
                             (BatchExecMultipleInput) dppScanDescendants.get(next).get(0);
 
-                    ExecEdge edge = ExecEdge.builder().source(source).target(multipleInput).build();
+                    if (source.getInputEdges().get(0).getSource()
+                            instanceof BatchExecDynamicPartitionSink) {
 
-                    int outEdgeIndex = findEdge(multipleInput.getInputEdges(), exchange);
-                    checkState(outEdgeIndex >= 0, "The out edge not found");
-                    multipleInput.replaceInputEdge(outEdgeIndex, edge);
-                    System.out.println(
-                            "replace outEdgeIndex "
-                                    + multipleInput.getInputEdges().get(outEdgeIndex));
+                        ExecEdge edge =
+                                ExecEdge.builder().source(source).target(multipleInput).build();
 
-                    // Also change the input edge
-                    replaceInnerEdge(multipleInput.getRootNode(), exchange, edge);
+                        int outEdgeIndex = findEdge(multipleInput.getInputEdges(), exchange);
+                        checkState(outEdgeIndex >= 0, "The out edge not found");
+                        multipleInput.replaceInputEdge(outEdgeIndex, edge);
+                        System.out.println(
+                                "replace outEdgeIndex "
+                                        + multipleInput.getInputEdges().get(outEdgeIndex));
 
-                    // Now move dpp sink to the root
-                    source.setCachedDppSink(
-                            (BatchExecDynamicPartitionSink)
-                                    source.getInputEdges().get(0).getSource());
-                    source.setInputEdges(Collections.emptyList());
+                        // Also change the input edge
+                        replaceInnerEdge(multipleInput.getRootNode(), exchange, edge);
 
-                    System.out.println("Set " + entry.getKey() + " to use chain 2");
-                    System.out.println("Using " + next);
+                        // Now move dpp sink to the root
+                        source.setCachedDppSink(
+                                (BatchExecDynamicPartitionSink)
+                                        source.getInputEdges().get(0).getSource());
+                        source.setInputEdges(Collections.emptyList());
+
+                        System.out.println("Set " + entry.getKey() + " to use chain 2");
+                        System.out.println("Using " + next);
+                    }
                 }
             }
         }

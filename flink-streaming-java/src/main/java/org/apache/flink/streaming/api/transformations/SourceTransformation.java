@@ -25,7 +25,9 @@ import org.apache.flink.api.connector.source.Boundedness;
 import org.apache.flink.api.connector.source.Source;
 import org.apache.flink.api.connector.source.SourceSplit;
 import org.apache.flink.api.dag.Transformation;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
+import org.apache.flink.util.function.SerializableFunction;
 
 import java.util.Collections;
 import java.util.List;
@@ -42,6 +44,7 @@ public class SourceTransformation<OUT, SplitT extends SourceSplit, EnumChkT>
 
     private ChainingStrategy chainingStrategy = ChainingStrategy.DEFAULT_CHAINING_STRATEGY;
     private String coordinatorListeningID;
+    private SerializableFunction<Object, Object[]> runtimeFilterKeysExtractor;
 
     /**
      * Creates a new {@code Transformation} with the given name, output type and parallelism.
@@ -102,5 +105,15 @@ public class SourceTransformation<OUT, SplitT extends SourceSplit, EnumChkT>
 
     public String getCoordinatorListeningID() {
         return coordinatorListeningID;
+    }
+
+    public void withRuntimeFilter(
+            String dfUUID, SerializableFunction<Object, Object[]> runtimeFilterKeysExtractor) {
+        setCoordinatorListeningID(dfUUID);
+        this.runtimeFilterKeysExtractor = runtimeFilterKeysExtractor;
+    }
+
+    public SerializableFunction<Object, Object[]> getRuntimeFilterKeysExtractor() {
+        return runtimeFilterKeysExtractor;
     }
 }

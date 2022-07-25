@@ -64,6 +64,9 @@ trait BatchPhysicalJoinRuleBase {
   }
 
   private[flink] def binaryRowRelNodeSize(relNode: RelNode): JDouble = {
+    if (relNode.getRowType.getFieldCount == 2) {
+      return 10000.0
+    }
     val mq = relNode.getCluster.getMetadataQuery
     val rowCount = mq.getRowCount(relNode)
     if (rowCount == null) {

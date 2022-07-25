@@ -369,39 +369,33 @@ public class HiveDialectITCase {
     @Test
     public void testDpp2() throws Exception {
         tableEnv.executeSql("create table dim (x int,y string,z int)");
-        //        tableEnv.executeSql("insert into dim values
-        // (1,'a',1),(2,'b',1),(3,'c',2)").await();
+        tableEnv.executeSql("insert into dim values (1,'a',1),(2,'b',1),(3,'c',2)").await();
 
         // partitioned dest table
         tableEnv.executeSql("create table fact (a int, b bigint, c string) partitioned by (p int)");
-        //        tableEnv.executeSql(
-        //                        "insert into fact partition (p=1) values
-        // (10,100,'aaa'),(11,101,'bbb'),(12,102,'ccc') ")
-        //                .await();
-        //        tableEnv.executeSql(
-        //                        "insert into fact partition (p=2) values
-        // (20,200,'aaa'),(21,201,'bbb'),(22,202,'ccc') ")
-        //                .await();
-        //        tableEnv.executeSql(
-        //                        "insert into fact partition (p=3) values
-        // (30,300,'aaa'),(31,301,'bbb'),(32,302,'ccc') ")
-        //                .await();
+        tableEnv.executeSql(
+                        "insert into fact partition (p=1) values (10,100,'aaa'),(11,101,'bbb'),(12,102,'ccc') ")
+                .await();
+        tableEnv.executeSql(
+                        "insert into fact partition (p=2) values (20,200,'aaa'),(21,201,'bbb'),(22,202,'ccc') ")
+                .await();
+        tableEnv.executeSql(
+                        "insert into fact partition (p=3) values (30,300,'aaa'),(31,301,'bbb'),(32,302,'ccc') ")
+                .await();
 
         // partitioned dest table
         tableEnv.executeSql(
                 "create table fact2 (a int, b bigint, c string) partitioned by (p int)");
-        //        tableEnv.executeSql(
-        //                        "insert into fact2 partition (p=1) values
-        // (10,100,'aaa'),(11,101,'bbb'),(12,102,'ccc') ")
-        //                .await();
-        //        tableEnv.executeSql(
-        //                        "insert into fact2 partition (p=2) values
-        // (20,200,'aaa'),(21,201,'bbb'),(22,202,'ccc') ")
-        //                .await();
-        //        tableEnv.executeSql(
-        //                        "insert into fact2 partition (p=3) values
-        // (30,300,'aaa'),(31,301,'bbb'),(32,302,'ccc') ")
-        //                .await();
+
+        tableEnv.executeSql(
+                        "insert into fact2 partition (p=1) values (10,100,'aaa2'),(11,101,'bbb2'),(12,102,'ccc2') ")
+                .await();
+        tableEnv.executeSql(
+                        "insert into fact2 partition (p=2) values (20,200,'aaa2'),(21,201,'bbb2'),(22,202,'ccc2') ")
+                .await();
+        tableEnv.executeSql(
+                        "insert into fact2 partition (p=3) values (30,300,'aaa2'),(31,301,'bbb2'),(32,302,'ccc2') ")
+                .await();
 
         tableEnv.getConfig().set(TaskManagerOptions.NUM_TASK_SLOTS, 4);
         tableEnv.getConfig().set(ExecutionConfigOptions.TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM, 1);
@@ -410,12 +404,30 @@ public class HiveDialectITCase {
         //        List<Row> results =
         //                queryResult(
         //                        tableEnv.sqlQuery(
-        //                                "(select a, b, c, p, x, y from fact, dim where x = p and z
-        // = 1 order by a) union all (select a, b, c, p, x, y from fact2, dim where x = p and z = 1
+        //                                "(select a, b, c, p, x, y from fact, dim where x = p
+        // and z
+        // = 1 order by a) union all (select a, b, c, p, x, y from fact2, dim where x = p and z
+        // = 1
         // order by a)"));
         //        System.out.println(results);
 
-        System.out.println(tableEnv.explainSql("select a, b, c, p, x, y from fact, dim where x = p and z = 1 order by a"));
+        while (true) {
+            try {
+                String sql =
+                        "select a1, a2, b1, b2, c1, c2, p1, p2, x, y from (select fact.a as a1, fact.b as b1, fact.c as c1, fact.p as p1, fact2.a as a2, fact2.b as b2, fact2.c as c2, fact2.p as p2 from fact, fact2 where fact.b=fact2.b) t1, dim where p1=x";
+//                (select a, b, c, p, x, y from fact, dim where x=p and z=1 order by a) union all (select a, b, c, p, x, y from fact2, dim where x=p and z=1)
+                String explainedSql = tableEnv.explainSql(sql);
+                System.out.println("explained sql:" + explainedSql);
+                List<Row> res = queryResult(tableEnv.sqlQuery(sql));
+                //                System.out.println(
+                //                        tableEnv.explainSql(
+                //                                "select a, b, c, p, x, y from fact, dim where x =
+                // p and z = 1 order by a"));
+                System.out.println("case result:" + res);
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     @Test
