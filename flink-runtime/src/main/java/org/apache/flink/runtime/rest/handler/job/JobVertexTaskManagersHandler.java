@@ -21,6 +21,7 @@ package org.apache.flink.runtime.rest.handler.job;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.execution.ExecutionState;
+import org.apache.flink.runtime.executiongraph.AccessExecution;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.executiongraph.AccessExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.AccessExecutionVertex;
@@ -131,18 +132,23 @@ public class JobVertexTaskManagersHandler
         Map<String, String> taskManagerId2Host = new HashMap<>();
         Map<String, List<AccessExecutionVertex>> taskManagerVertices = new HashMap<>();
         for (AccessExecutionVertex vertex : jobVertex.getTaskVertices()) {
-            TaskManagerLocation location = vertex.getCurrentAssignedResourceLocation();
-            String taskManagerHost =
-                    location == null
-                            ? "(unassigned)"
-                            : location.getHostname() + ':' + location.dataPort();
-            String taskmanagerId =
-                    location == null ? "(unassigned)" : location.getResourceID().toString();
-            taskManagerId2Host.put(taskmanagerId, taskManagerHost);
-            List<AccessExecutionVertex> vertices =
-                    taskManagerVertices.computeIfAbsent(
-                            taskmanagerId, ignored -> new ArrayList<>(4));
-            vertices.add(vertex);
+            List<TaskManagerLocation> locations =
+                    vertex.getCurrentExecutions().stream()
+                            .map(AccessExecution::getAssignedResourceLocation)
+                            .collect(Collectors.toList());
+            for (TaskManagerLocation location : locations) {
+                String taskManagerHost =
+                        location == null
+                                ? "(unassigned)"
+                                : location.getHostname() + ':' + location.dataPort();
+                String taskmanagerId =
+                        location == null ? "(unassigned)" : location.getResourceID().toString();
+                taskManagerId2Host.put(taskmanagerId, taskManagerHost);
+                List<AccessExecutionVertex> vertices =
+                        taskManagerVertices.computeIfAbsent(
+                                taskmanagerId, ignored -> new ArrayList<>(4));
+                vertices.add(vertex);
+            }
         }
 
         final long now = System.currentTimeMillis();
@@ -157,7 +163,7 @@ public class JobVertexTaskManagersHandler
             List<IOMetricsInfo> ioMetricsInfos = new ArrayList<>();
             List<Map<ExecutionState, Long>> status =
                     taskVertices.stream()
-                            .map(AccessExecutionVertex::getCurrentExecutionAttempt)
+                            .flatMap(v -> v.getCurrentExecutions().stream())
                             .map(StatusDurationUtils::getExecutionStateDuration)
                             .collect(Collectors.toList());
 
@@ -182,30 +188,32 @@ public class JobVertexTaskManagersHandler
                 allFinished &= state.isTerminal();
                 endTime = Math.max(endTime, vertex.getStateTimestamp(state));
 
-                counts.addIOMetrics(
-                        vertex.getCurrentExecutionAttempt(),
-                        metricFetcher,
-                        jobID.toString(),
-                        jobVertex.getJobVertexId().toString());
-                MutableIOMetrics current = new MutableIOMetrics();
-                current.addIOMetrics(
-                        vertex.getCurrentExecutionAttempt(),
-                        metricFetcher,
-                        jobID.toString(),
-                        jobVertex.getJobVertexId().toString());
-                ioMetricsInfos.add(
-                        new IOMetricsInfo(
-                                current.getNumBytesIn(),
-                                current.isNumBytesInComplete(),
-                                current.getNumBytesOut(),
-                                current.isNumBytesOutComplete(),
-                                current.getNumRecordsIn(),
-                                current.isNumRecordsInComplete(),
-                                current.getNumRecordsOut(),
-                                current.isNumRecordsOutComplete(),
-                                current.getAccumulateBackPressuredTime(),
-                                current.getAccumulateIdleTime(),
-                                current.getAccumulateBusyTime()));
+                for (AccessExecution attempt : vertex.getCurrentExecutions()) {
+                    counts.addIOMetrics(
+                            attempt,
+                            metricFetcher,
+                            jobID.toString(),
+                            jobVertex.getJobVertexId().toString());
+                    MutableIOMetrics current = new MutableIOMetrics();
+                    current.addIOMetrics(
+                            attempt,
+                            metricFetcher,
+                            jobID.toString(),
+                            jobVertex.getJobVertexId().toString());
+                    ioMetricsInfos.add(
+                            new IOMetricsInfo(
+                                    current.getNumBytesIn(),
+                                    current.isNumBytesInComplete(),
+                                    current.getNumBytesOut(),
+                                    current.isNumBytesOutComplete(),
+                                    current.getNumRecordsIn(),
+                                    current.isNumRecordsInComplete(),
+                                    current.getNumRecordsOut(),
+                                    current.isNumRecordsOutComplete(),
+                                    current.getAccumulateBackPressuredTime(),
+                                    current.getAccumulateIdleTime(),
+                                    current.getAccumulateBusyTime()));
+                }
             }
 
             long duration;
