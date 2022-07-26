@@ -71,8 +71,8 @@
             (nzExpandChange)="onExpandChange(subtask, $event)"
           >
             {{ subtask['subtask'] }}
-            <ng-container *ngIf="subtask.attemptNum !== undefined">
-              &nbsp;[attempt-{{ subtask.attemptNum + 1 }}]
+            <ng-container *ngIf="subtask['attempt-number'] !== undefined">
+              &nbsp;[attempt-{{ subtask['attempt-number'] + 1 }}]
             </ng-container>
           </td>
           <td>
@@ -97,8 +97,8 @@
             <tr>
               <td [nzIndentSize]="1">
                 {{ attempt['subtask'] }}
-                <ng-container *ngIf="attempt.attemptNum !== undefined">
-                  &nbsp;[attempt-{{ attempt.attemptNum + 1 }}]
+                <ng-container *ngIf="attempt['attempt-number'] !== undefined">
+                  &nbsp;[attempt-{{ attempt['attempt-number'] + 1 }}]
                 </ng-container>
               </td>
               <td>

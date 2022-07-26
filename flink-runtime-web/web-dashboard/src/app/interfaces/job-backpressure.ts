@@ -25,7 +25,7 @@ export interface JobBackpressure {
 
 export interface JobBackpressureSubtaskData {
   subtask: number;
-  attemptNum?: number;
+  'attempt-number'?: number;
   'backpressure-level': string;
   ratio: number;
   idleRatio: number;

@@ -45,7 +45,7 @@ import { JobLocalService } from '../../job-local.service';
 export class JobOverviewDrawerBackpressureComponent implements OnInit, OnDestroy {
   readonly trackBySubtask = (_: number, node: JobBackpressureSubtask): number => node.subtask;
   readonly trackBySubtaskAttempt = (_: number, node: JobBackpressureSubtaskData): string =>
-    `${node.subtask}-${node.attemptNum}`;
+    `${node.subtask}-${node['attempt-number']}`;
 
   expandSet = new Set<number>();
   isLoading = true;

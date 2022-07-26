@@ -146,7 +146,7 @@
                 "
               >
                 <tr>
-                  <td nzLeft [nzIndentSize]="1">{{ subtask['subtask'] }} [SPEC]</td>
+                  <td nzLeft [nzIndentSize]="1">{{ subtask['subtask'] }}</td>
                   <td>
                     <span *ngIf="attempt['metrics']['read-bytes-complete']; else loadingTemplate">
                       {{ attempt['metrics']['read-bytes'] | humanizeBytes }}
