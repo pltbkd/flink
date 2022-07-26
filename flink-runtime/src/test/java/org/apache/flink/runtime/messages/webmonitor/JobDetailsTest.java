@@ -27,11 +27,11 @@ import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessin
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for the {@link JobDetails}. */
 public class JobDetailsTest extends TestLogger {
@@ -79,7 +79,7 @@ public class JobDetailsTest extends TestLogger {
 
         final JobDetails unmarshalled = objectMapper.treeToValue(marshalled, JobDetails.class);
 
-        assertEquals(expected, unmarshalled);
+        assertThat(expected).isEqualTo(unmarshalled);
     }
 
     @Test
@@ -101,6 +101,6 @@ public class JobDetailsTest extends TestLogger {
         final JobDetails unmarshalled =
                 objectMapper.readValue(COMPATIBLE_JOB_DETAILS, JobDetails.class);
 
-        assertEquals(expected, unmarshalled);
+        assertThat(expected).isEqualTo(unmarshalled);
     }
 }

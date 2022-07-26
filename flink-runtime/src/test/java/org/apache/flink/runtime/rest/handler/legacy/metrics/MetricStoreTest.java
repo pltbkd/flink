@@ -22,32 +22,35 @@ import org.apache.flink.runtime.metrics.dump.MetricDump;
 import org.apache.flink.runtime.metrics.dump.QueryScopeInfo;
 import org.apache.flink.util.TestLogger;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for the MetricStore. */
 public class MetricStoreTest extends TestLogger {
+
     @Test
     public void testAdd() throws IOException {
         MetricStore store = setupStore(new MetricStore());
 
-        assertEquals("0", store.getJobManagerMetricStore().getMetric("abc.metric1", "-1"));
-        assertEquals("1", store.getTaskManagerMetricStore("tmid").getMetric("abc.metric2", "-1"));
-        assertEquals("2", store.getJobMetricStore("jobid").getMetric("abc.metric3", "-1"));
-        assertEquals("3", store.getJobMetricStore("jobid").getMetric("abc.metric4", "-1"));
-        assertEquals(
-                "4", store.getTaskMetricStore("jobid", "taskid").getMetric("8.abc.metric5", "-1"));
-        assertEquals(
-                "5",
-                store.getTaskMetricStore("jobid", "taskid")
-                        .getMetric("8.opname.abc.metric6", "-1"));
-        assertEquals(
-                "6",
-                store.getTaskMetricStore("jobid", "taskid")
-                        .getMetric("8.opname.abc.metric7", "-1"));
+        assertThat(store.getJobManagerMetricStore().getMetric("abc.metric1", "-1")).isEqualTo("0");
+        assertThat(store.getTaskManagerMetricStore("tmid").getMetric("abc.metric2", "-1"))
+                .isEqualTo("1");
+        assertThat(store.getJobMetricStore("jobid").getMetric("abc.metric3", "-1")).isEqualTo("2");
+        assertThat(store.getJobMetricStore("jobid").getMetric("abc.metric4", "-1")).isEqualTo("3");
+
+        assertThat(store.getTaskMetricStore("jobid", "taskid").getMetric("8.abc.metric5", "-1"))
+                .isEqualTo("4");
+        assertThat(
+                        store.getTaskMetricStore("jobid", "taskid")
+                                .getMetric("8.opname.abc.metric6", "-1"))
+                .isEqualTo("5");
+        assertThat(
+                        store.getTaskMetricStore("jobid", "taskid")
+                                .getMetric("8.opname.abc.metric7", "-1"))
+                .isEqualTo("6");
     }
 
     @Test
@@ -64,9 +67,9 @@ public class MetricStoreTest extends TestLogger {
         store.add(cd);
 
         // -----verify that no side effects occur
-        assertEquals(0, store.getJobManager().metrics.size());
-        assertEquals(0, store.getTaskManagers().size());
-        assertEquals(0, store.getJobs().size());
+        assertThat(store.getJobManager().metrics).isEmpty();
+        assertThat(store.getTaskManagers()).isEmpty();
+        assertThat(store.getJobs()).isEmpty();
     }
 
     public static MetricStore setupStore(MetricStore store) {
