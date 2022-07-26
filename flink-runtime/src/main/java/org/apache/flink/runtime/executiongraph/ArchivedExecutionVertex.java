@@ -18,10 +18,14 @@
 
 package org.apache.flink.runtime.executiongraph;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Optional;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -40,15 +44,27 @@ public class ArchivedExecutionVertex implements AccessExecutionVertex, Serializa
 
     private final ArchivedExecution currentExecution; // this field must never be null
 
+    private final Collection<AccessExecution> currentExecutions;
+
     // ------------------------------------------------------------------------
 
     public ArchivedExecutionVertex(ExecutionVertex vertex) {
         this.subTaskIndex = vertex.getParallelSubtaskIndex();
         this.executionHistory = getCopyOfExecutionHistory(vertex);
         this.taskNameWithSubtask = vertex.getTaskNameWithSubtaskIndex();
-        this.currentExecution = vertex.getCurrentExecutionAttempt().archive();
+
+        Execution vertexCurrentExecution = vertex.getCurrentExecutionAttempt();
+        currentExecutions = new ArrayList<>(vertex.getCurrentExecutions().size());
+        currentExecution = vertexCurrentExecution.archive();
+        currentExecutions.add(currentExecution);
+        for (Execution execution : vertex.getCurrentExecutions()) {
+            if (execution != vertexCurrentExecution) {
+                currentExecutions.add(execution.archive());
+            }
+        }
     }
 
+    @VisibleForTesting
     public ArchivedExecutionVertex(
             int subTaskIndex,
             String taskNameWithSubtask,
@@ -58,6 +74,7 @@ public class ArchivedExecutionVertex implements AccessExecutionVertex, Serializa
         this.taskNameWithSubtask = checkNotNull(taskNameWithSubtask);
         this.currentExecution = checkNotNull(currentExecution);
         this.executionHistory = checkNotNull(executionHistory);
+        this.currentExecutions = Collections.singletonList(currentExecution);
     }
 
     // --------------------------------------------------------------------------------------------
@@ -77,6 +94,11 @@ public class ArchivedExecutionVertex implements AccessExecutionVertex, Serializa
     @Override
     public ArchivedExecution getCurrentExecutionAttempt() {
         return currentExecution;
+    }
+
+    @Override
+    public Collection<AccessExecution> getCurrentExecutions() {
+        return Collections.unmodifiableCollection(currentExecutions);
     }
 
     @Override
