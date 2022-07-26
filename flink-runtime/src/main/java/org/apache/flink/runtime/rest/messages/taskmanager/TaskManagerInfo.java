@@ -31,9 +31,13 @@ import org.apache.flink.util.Preconditions;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCreator;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonIgnore;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonInclude;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonInclude.Include;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.annotation.JsonSerialize;
+
+import javax.annotation.Nullable;
 
 import java.io.Serializable;
 import java.util.Objects;
@@ -62,6 +66,8 @@ public class TaskManagerInfo implements ResponseBody, Serializable {
     public static final String FIELD_NAME_HARDWARE = "hardware";
 
     public static final String FIELD_NAME_MEMORY = "memoryConfiguration";
+
+    public static final String FIELD_NAME_BLOCKED = "blocked";
 
     private static final long serialVersionUID = 1L;
 
@@ -99,6 +105,10 @@ public class TaskManagerInfo implements ResponseBody, Serializable {
     @JsonProperty(FIELD_NAME_MEMORY)
     private final TaskExecutorMemoryConfiguration memoryConfiguration;
 
+    @JsonProperty(FIELD_NAME_BLOCKED)
+    @JsonInclude(Include.NON_DEFAULT)
+    private final boolean blocked;
+
     @JsonCreator
     public TaskManagerInfo(
             @JsonDeserialize(using = ResourceIDDeserializer.class)
@@ -113,7 +123,8 @@ public class TaskManagerInfo implements ResponseBody, Serializable {
             @JsonProperty(FIELD_NAME_TOTAL_RESOURCE) ResourceProfileInfo totalResource,
             @JsonProperty(FIELD_NAME_AVAILABLE_RESOURCE) ResourceProfileInfo freeResource,
             @JsonProperty(FIELD_NAME_HARDWARE) HardwareDescription hardwareDescription,
-            @JsonProperty(FIELD_NAME_MEMORY) TaskExecutorMemoryConfiguration memoryConfiguration) {
+            @JsonProperty(FIELD_NAME_MEMORY) TaskExecutorMemoryConfiguration memoryConfiguration,
+            @JsonProperty(FIELD_NAME_BLOCKED) @Nullable Boolean blocked) {
         this.resourceId = Preconditions.checkNotNull(resourceId);
         this.address = Preconditions.checkNotNull(address);
         this.dataPort = dataPort;
@@ -125,6 +136,7 @@ public class TaskManagerInfo implements ResponseBody, Serializable {
         this.freeResource = freeResource;
         this.hardwareDescription = Preconditions.checkNotNull(hardwareDescription);
         this.memoryConfiguration = Preconditions.checkNotNull(memoryConfiguration);
+        this.blocked = (blocked != null) && blocked;
     }
 
     public TaskManagerInfo(
@@ -138,7 +150,8 @@ public class TaskManagerInfo implements ResponseBody, Serializable {
             ResourceProfile totalResource,
             ResourceProfile freeResource,
             HardwareDescription hardwareDescription,
-            TaskExecutorMemoryConfiguration memoryConfiguration) {
+            TaskExecutorMemoryConfiguration memoryConfiguration,
+            @Nullable Boolean blocked) {
         this(
                 resourceId,
                 address,
@@ -150,7 +163,8 @@ public class TaskManagerInfo implements ResponseBody, Serializable {
                 ResourceProfileInfo.fromResrouceProfile(totalResource),
                 ResourceProfileInfo.fromResrouceProfile(freeResource),
                 hardwareDescription,
-                memoryConfiguration);
+                memoryConfiguration,
+                blocked);
     }
 
     @JsonIgnore
@@ -208,6 +222,11 @@ public class TaskManagerInfo implements ResponseBody, Serializable {
         return memoryConfiguration;
     }
 
+    @JsonIgnore
+    public boolean getBlocked() {
+        return blocked;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -227,7 +246,8 @@ public class TaskManagerInfo implements ResponseBody, Serializable {
                 && Objects.equals(resourceId, that.resourceId)
                 && Objects.equals(address, that.address)
                 && Objects.equals(hardwareDescription, that.hardwareDescription)
-                && Objects.equals(memoryConfiguration, that.memoryConfiguration);
+                && Objects.equals(memoryConfiguration, that.memoryConfiguration)
+                && Objects.equals(blocked, that.blocked);
     }
 
     @Override
@@ -243,6 +263,7 @@ public class TaskManagerInfo implements ResponseBody, Serializable {
                 totalResource,
                 freeResource,
                 hardwareDescription,
-                memoryConfiguration);
+                memoryConfiguration,
+                blocked);
     }
 }

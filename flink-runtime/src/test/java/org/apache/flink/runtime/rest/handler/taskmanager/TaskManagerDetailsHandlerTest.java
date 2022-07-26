@@ -44,8 +44,8 @@ import org.apache.flink.util.TestLogger;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -67,7 +67,7 @@ public class TaskManagerDetailsHandlerTest extends TestLogger {
 
     private TaskManagerDetailsHandler testInstance;
 
-    @Before
+    @BeforeEach
     public void setup() throws HandlerRequestException {
         resourceManagerGateway = new TestingResourceManagerGateway();
         metricFetcher = new TestingMetricFetcher();
@@ -174,7 +174,8 @@ public class TaskManagerDetailsHandlerTest extends TestLogger {
                 ResourceProfile.ZERO,
                 ResourceProfile.ZERO,
                 new HardwareDescription(0, 0L, 0L, 0L),
-                new TaskExecutorMemoryConfiguration(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L));
+                new TaskExecutorMemoryConfiguration(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L),
+                false);
     }
 
     private static HandlerRequest<EmptyRequestBody> createRequest() throws HandlerRequestException {
