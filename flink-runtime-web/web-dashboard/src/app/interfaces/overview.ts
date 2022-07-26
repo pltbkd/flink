@@ -21,7 +21,7 @@ export interface Overview {
   'taskmanagers-blocked'?: number; // only exist if non-zero
   'slots-total': number;
   'slots-available': number;
-  'slots-blocked'?: number; // only exist if non-zero
+  'slots-free-and-blocked'?: number; // only exist if non-zero
   'jobs-running': number;
   'jobs-finished': number;
   'jobs-cancelled': number;
