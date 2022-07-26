@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.rest.handler.legacy.metrics;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.runtime.messages.webmonitor.JobDetails;
 import org.apache.flink.runtime.metrics.dump.MetricDump;
 import org.apache.flink.runtime.metrics.dump.QueryScopeInfo;
 
@@ -27,8 +28,10 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.concurrent.ThreadSafe;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -55,6 +58,14 @@ public class MetricStore {
     private final Map<String, JobMetricStore> jobs = new ConcurrentHashMap<>();
 
     /**
+     * The map holds the attempt number of the representing execution for each subtask of each
+     * vertex. When a metric of an execution attempt is added, the metric can also be added to the
+     * SubtaskMetricStore when it is of the representing execution.
+     */
+    private final Map<String, Map<String, Map<Integer, Integer>>> currentExecutionAttempts =
+            new ConcurrentHashMap<>();
+
+    /**
      * Remove inactive task managers.
      *
      * @param activeTaskManagers to retain.
@@ -70,6 +81,18 @@ public class MetricStore {
      */
     synchronized void retainJobs(List<String> activeJobs) {
         jobs.keySet().retainAll(activeJobs);
+        currentExecutionAttempts.keySet().retainAll(activeJobs);
+    }
+
+    public synchronized void updateCurrentExecutionAttempts(Collection<JobDetails> jobs) {
+        jobs.forEach(
+                job ->
+                        currentExecutionAttempts.put(
+                                job.getJobId().toString(), job.getCurrentExecutionAttempts()));
+    }
+
+    public Map<String, Map<String, Map<Integer, Integer>>> getCurrentExecutionAttempts() {
+        return currentExecutionAttempts;
     }
 
     /**
@@ -156,6 +179,27 @@ public class MetricStore {
         return ComponentMetricStore.unmodifiable(task.getSubtaskMetricStore(subtaskIndex));
     }
 
+    public synchronized ComponentMetricStore getSubtaskAttemptMetricStore(
+            String jobID, String taskID, int subtaskIndex, int attemptId) {
+        JobMetricStore job = jobID == null ? null : jobs.get(jobID);
+        if (job == null) {
+            return null;
+        }
+        TaskMetricStore task = job.getTaskMetricStore(taskID);
+        if (task == null) {
+            return null;
+        }
+        SubtaskMetricStore subtask = task.getSubtaskMetricStore(subtaskIndex);
+        if (attemptId < 0) {
+            return ComponentMetricStore.unmodifiable(subtask);
+        }
+
+        if (subtask == null) {
+            return null;
+        }
+        return ComponentMetricStore.unmodifiable(subtask.getAttemptsMetricStore(attemptId));
+    }
+
     public synchronized Map<String, JobMetricStore> getJobs() {
         return unmodifiableMap(jobs);
     }
@@ -164,7 +208,9 @@ public class MetricStore {
         return unmodifiableMap(taskManagers);
     }
 
-    /** @deprecated Use semantically equivalent {@link #getJobManagerMetricStore()}. */
+    /**
+     * @deprecated Use semantically equivalent {@link #getJobManagerMetricStore()}.
+     */
     @Deprecated
     public synchronized ComponentMetricStore getJobManager() {
         return ComponentMetricStore.unmodifiable(jobManager);
@@ -177,7 +223,9 @@ public class MetricStore {
             TaskManagerMetricStore tm;
             JobMetricStore job;
             TaskMetricStore task;
-            ComponentMetricStore subtask;
+            SubtaskMetricStore subtask;
+            ComponentMetricStore attempt;
+            boolean isCurrentAttempt = true;
 
             String name = info.scope.isEmpty() ? metric.name : info.scope + "." + metric.name;
 
@@ -214,15 +262,33 @@ public class MetricStore {
                     task = job.tasks.computeIfAbsent(taskInfo.vertexID, k -> new TaskMetricStore());
                     subtask =
                             task.subtasks.computeIfAbsent(
-                                    taskInfo.subtaskIndex, k -> new ComponentMetricStore());
+                                    taskInfo.subtaskIndex, k -> new SubtaskMetricStore());
+
+                    if (taskInfo.attemptNumber >= 0) {
+                        // Consider as the current attempt if current attempt id is not set, which
+                        // means there should be only one execution
+                        isCurrentAttempt =
+                                Optional.of(currentExecutionAttempts)
+                                                .map(m -> m.get(taskInfo.jobID))
+                                                .map(m -> m.get(taskInfo.vertexID))
+                                                .map(m -> m.get(taskInfo.subtaskIndex))
+                                                .orElse(taskInfo.attemptNumber)
+                                        == taskInfo.attemptNumber;
+                        attempt =
+                                subtask.attempts.computeIfAbsent(
+                                        taskInfo.attemptNumber, k -> new ComponentMetricStore());
+                        addMetric(attempt.metrics, name, metric);
+                    }
                     /**
                      * The duplication is intended. Metrics scoped by subtask are useful for several
                      * job/task handlers, while the WebInterface task metric queries currently do
                      * not account for subtasks, so we don't divide by subtask and instead use the
                      * concatenation of subtask index and metric name as the name for those.
                      */
-                    addMetric(subtask.metrics, name, metric);
-                    addMetric(task.metrics, taskInfo.subtaskIndex + "." + name, metric);
+                    if (isCurrentAttempt) {
+                        addMetric(subtask.metrics, name, metric);
+                        addMetric(task.metrics, taskInfo.subtaskIndex + "." + name, metric);
+                    }
                     break;
                 case INFO_CATEGORY_OPERATOR:
                     QueryScopeInfo.OperatorQueryScopeInfo operatorInfo =
@@ -233,21 +299,42 @@ public class MetricStore {
                                     operatorInfo.vertexID, k -> new TaskMetricStore());
                     subtask =
                             task.subtasks.computeIfAbsent(
-                                    operatorInfo.subtaskIndex, k -> new ComponentMetricStore());
+                                    operatorInfo.subtaskIndex, k -> new SubtaskMetricStore());
+
+                    if (operatorInfo.attemptNumber >= 0) {
+                        // Consider as the current attempt if current attempt id is not set, which
+                        // means there should be only one execution
+                        isCurrentAttempt =
+                                Optional.of(currentExecutionAttempts)
+                                                .map(m -> m.get(operatorInfo.jobID))
+                                                .map(m -> m.get(operatorInfo.vertexID))
+                                                .map(m -> m.get(operatorInfo.subtaskIndex))
+                                                .orElse(operatorInfo.attemptNumber)
+                                        == operatorInfo.attemptNumber;
+
+                        attempt =
+                                subtask.attempts.computeIfAbsent(
+                                        operatorInfo.attemptNumber,
+                                        k -> new ComponentMetricStore());
+                        addMetric(attempt.metrics, operatorInfo.operatorName + "." + name, metric);
+                    }
+
                     /**
                      * As the WebInterface does not account for operators (because it can't) we
                      * don't divide by operator and instead use the concatenation of subtask index,
                      * operator name and metric name as the name.
                      */
-                    addMetric(subtask.metrics, operatorInfo.operatorName + "." + name, metric);
-                    addMetric(
-                            task.metrics,
-                            operatorInfo.subtaskIndex
-                                    + "."
-                                    + operatorInfo.operatorName
-                                    + "."
-                                    + name,
-                            metric);
+                    if (isCurrentAttempt) {
+                        addMetric(subtask.metrics, operatorInfo.operatorName + "." + name, metric);
+                        addMetric(
+                                task.metrics,
+                                operatorInfo.subtaskIndex
+                                        + "."
+                                        + operatorInfo.operatorName
+                                        + "."
+                                        + name,
+                                metric);
+                    }
                     break;
                 default:
                     LOG.debug("Invalid metric dump category: " + info.getCategory());
@@ -363,24 +450,24 @@ public class MetricStore {
     /** Sub-structure containing metrics of a single Task. */
     @ThreadSafe
     public static class TaskMetricStore extends ComponentMetricStore {
-        private final Map<Integer, ComponentMetricStore> subtasks;
+        private final Map<Integer, SubtaskMetricStore> subtasks;
 
         private TaskMetricStore() {
             this(new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
         }
 
         private TaskMetricStore(
-                Map<String, String> metrics, Map<Integer, ComponentMetricStore> subtasks) {
+                Map<String, String> metrics, Map<Integer, SubtaskMetricStore> subtasks) {
             super(metrics);
             this.subtasks = checkNotNull(subtasks);
         }
 
-        public ComponentMetricStore getSubtaskMetricStore(int subtaskIndex) {
+        public SubtaskMetricStore getSubtaskMetricStore(int subtaskIndex) {
             return subtasks.get(subtaskIndex);
         }
 
         public Map<Integer, ComponentMetricStore> getAllSubtaskMetricStores() {
-            return subtasks;
+            return unmodifiableMap(subtasks);
         }
 
         private static TaskMetricStore unmodifiable(TaskMetricStore source) {
@@ -389,6 +476,38 @@ public class MetricStore {
             }
             return new TaskMetricStore(
                     unmodifiableMap(source.metrics), unmodifiableMap(source.subtasks));
+        }
+    }
+
+    /** Sub-structure containing metrics of a single subtask. */
+    @ThreadSafe
+    public static class SubtaskMetricStore extends ComponentMetricStore {
+        private final Map<Integer, ComponentMetricStore> attempts;
+
+        private SubtaskMetricStore() {
+            this(new ConcurrentHashMap<>(), new ConcurrentHashMap<>());
+        }
+
+        private SubtaskMetricStore(
+                Map<String, String> metrics, Map<Integer, ComponentMetricStore> attempts) {
+            super(metrics);
+            this.attempts = checkNotNull(attempts);
+        }
+
+        private static SubtaskMetricStore unmodifiable(SubtaskMetricStore source) {
+            if (source == null) {
+                return null;
+            }
+            return new SubtaskMetricStore(
+                    unmodifiableMap(source.metrics), unmodifiableMap(source.attempts));
+        }
+
+        public ComponentMetricStore getAttemptsMetricStore(int attemptId) {
+            return attempts.get(attemptId);
+        }
+
+        public Map<Integer, ComponentMetricStore> getAllAttemptsMetricStores() {
+            return attempts;
         }
     }
 }
