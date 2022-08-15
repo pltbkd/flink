@@ -33,6 +33,7 @@ import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.runtime.operators.coordination.CoordinatorStore;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.source.coordinator.RuntimeFilterEvent.ReceiverType;
 import org.apache.flink.runtime.source.event.ReaderRegistrationEvent;
 import org.apache.flink.runtime.source.event.ReportedWatermarkEvent;
 import org.apache.flink.runtime.source.event.RequestSplitEvent;
@@ -53,6 +54,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -116,6 +118,9 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT>
      * coordinators may send events to this coordinator by the ID.
      */
     @Nullable private final String coordinatorListeningID;
+
+    private final List<RuntimeFilterEvent> runtimeFilterEvents = new ArrayList<>();
+    private final List<Integer> registeredReaders = new ArrayList<>();
 
     public SourceCoordinator(
             String operatorName,
@@ -534,17 +539,25 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT>
                 attemptNumber,
                 event);
 
-        if (context.isConcurrentExecutionAttemptsSupported()) {
-            checkState(
-                    enumerator instanceof SupportsHandleExecutionAttemptSourceEvent,
-                    "The split enumerator %s must implement SupportsHandleExecutionAttemptSourceEvent "
-                            + "to be used in concurrent execution attempts scenario (e.g. if "
-                            + "speculative execution is enabled).",
-                    enumerator.getClass().getCanonicalName());
-            ((SupportsHandleExecutionAttemptSourceEvent) enumerator)
-                    .handleSourceEvent(subtask, attemptNumber, event);
+        if (event instanceof RuntimeFilterEvent
+                && ((RuntimeFilterEvent<?>) event).getReceiverType() == ReceiverType.OPERATOR) {
+            this.runtimeFilterEvents.add((RuntimeFilterEvent) event);
+            for (int readerIndex : registeredReaders) {
+                context.sendEventToSourceOperator(readerIndex, new SourceEventWrapper(event));
+            }
         } else {
-            enumerator.handleSourceEvent(subtask, event);
+            if (context.isConcurrentExecutionAttemptsSupported()) {
+                checkState(
+                        enumerator instanceof SupportsHandleExecutionAttemptSourceEvent,
+                        "The split enumerator %s must implement SupportsHandleExecutionAttemptSourceEvent "
+                                + "to be used in concurrent execution attempts scenario (e.g. if "
+                                + "speculative execution is enabled).",
+                        enumerator.getClass().getCanonicalName());
+                ((SupportsHandleExecutionAttemptSourceEvent) enumerator)
+                        .handleSourceEvent(subtask, attemptNumber, event);
+            } else {
+                enumerator.handleSourceEvent(subtask, event);
+            }
         }
     }
 
@@ -564,6 +577,10 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT>
         context.registerSourceReader(subtask, attemptNumber, event.location());
         if (!subtaskReaderExisted) {
             enumerator.addReader(event.subtaskId());
+            for (RuntimeFilterEvent e : runtimeFilterEvents) {
+                context.sendEventToSourceOperator(subtask, new SourceEventWrapper(e));
+            }
+            registeredReaders.add(event.subtaskId());
         }
     }
 

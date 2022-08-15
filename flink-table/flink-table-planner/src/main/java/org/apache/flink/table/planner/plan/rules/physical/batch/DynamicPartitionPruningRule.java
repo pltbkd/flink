@@ -18,11 +18,11 @@
 
 package org.apache.flink.table.planner.plan.rules.physical.batch;
 
+import org.apache.flink.runtime.source.coordinator.RuntimeFilterEvent.ReceiverType;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.config.OptimizerConfigOptions;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.abilities.SupportsDynamicFiltering;
-import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalCalc;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicFilteringDataCollector;
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalDynamicFilteringTableSourceScan;
@@ -32,6 +32,8 @@ import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalRel
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalTableSourceScan;
 import org.apache.flink.table.planner.plan.schema.TableSourceTable;
 import org.apache.flink.table.planner.utils.DynamicPartitionPruningUtils;
+import org.apache.flink.table.runtime.operators.dynamicfiltering.DynamicFilteringDataCollectorOperator.FilterConfig;
+import org.apache.flink.table.runtime.operators.dynamicfiltering.DynamicFilteringDataCollectorOperator.RuntimeFilterType;
 
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelRule;
@@ -39,7 +41,6 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Exchange;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinInfo;
-import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexProgram;
@@ -53,6 +54,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Planner rule that tries to do partition prune in the execution phase, which can translate a
@@ -184,29 +186,34 @@ public abstract class DynamicPartitionPruningRule extends RelRule<RelRule.Config
             }
         }
         final BatchPhysicalDynamicFilteringDataCollector dynamicFilteringDataCollector =
-                createDynamicFilteringConnector(dimSide, dynamicFilteringFieldIndices);
-        return new BatchPhysicalDynamicFilteringTableSourceScan(
-                factScan.getCluster(),
-                factScan.getTraitSet(),
-                factScan.getHints(),
-                factScan.tableSourceTable(),
-                dynamicFilteringDataCollector);
+                createDynamicFilteringCollector(dimSide);
+        BatchPhysicalDynamicFilteringTableSourceScan scan =
+                new BatchPhysicalDynamicFilteringTableSourceScan(
+                        factScan.getCluster(),
+                        factScan.getTraitSet(),
+                        factScan.getHints(),
+                        factScan.tableSourceTable(),
+                        Collections.singletonList(dynamicFilteringDataCollector));
+
+        FilterConfig filterConfig =
+                new FilterConfig(
+                        scan.uuid(),
+                        dynamicFilteringFieldIndices.stream().mapToInt(i -> i).toArray(),
+                        IntStream.range(0, dynamicFilteringFieldIndices.size()).toArray(),
+                        RuntimeFilterType.ROW_DATA,
+                        ReceiverType.ENUMERATOR);
+        dynamicFilteringDataCollector.filterConfigs().add(filterConfig);
+        return scan;
     }
 
-    private BatchPhysicalDynamicFilteringDataCollector createDynamicFilteringConnector(
-            RelNode dimSide, List<Integer> dynamicFilteringFieldIndices) {
-        final RelDataType outputType =
-                ((FlinkTypeFactory) dimSide.getCluster().getTypeFactory())
-                        .projectStructType(
-                                dimSide.getRowType(),
-                                dynamicFilteringFieldIndices.stream().mapToInt(i -> i).toArray());
-
+    private BatchPhysicalDynamicFilteringDataCollector createDynamicFilteringCollector(
+            RelNode dimSide) {
         return new BatchPhysicalDynamicFilteringDataCollector(
                 dimSide.getCluster(),
                 dimSide.getTraitSet(),
                 ignoreExchange(dimSide),
-                outputType,
-                dynamicFilteringFieldIndices.stream().mapToInt(i -> i).toArray());
+                dimSide.getRowType(),
+                new ArrayList<>());
     }
 
     private RelNode ignoreExchange(RelNode dimSide) {

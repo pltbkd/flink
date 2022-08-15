@@ -30,6 +30,7 @@ import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeGraph;
 import org.apache.flink.table.planner.plan.nodes.exec.InputProperty;
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecBoundedStreamScan;
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecMultipleInput;
+import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecTableSourceScan;
 import org.apache.flink.table.planner.plan.nodes.exec.common.CommonExecExchange;
 import org.apache.flink.table.planner.plan.nodes.exec.common.CommonExecTableSourceScan;
 import org.apache.flink.table.planner.plan.nodes.exec.common.CommonExecUnion;
@@ -222,7 +223,9 @@ public class MultipleInputNodeCreationProcessor implements ExecNodeGraphProcesso
     private boolean canBeRootOfMultipleInputGroup(ExecNodeWrapper wrapper) {
         // only a node with more than one input can be the root,
         // as one-input operator chaining are handled by operator chains
-        return wrapper.inputs.size() >= 2;
+        // TODO with runtime filter, source can have more than 1 input
+        return wrapper.inputs.size() >= 2
+                && !(wrapper.execNode instanceof BatchExecTableSourceScan);
     }
 
     // --------------------------------------------------------------------------------

@@ -30,6 +30,7 @@ import org.apache.calcite.rel.{RelNode, RelWriter}
 import org.apache.calcite.rel.hint.RelHint
 
 import java.util
+import java.util.UUID
 
 /**
  * Batch physical RelNode to read data from an external source defined by a bounded
@@ -40,8 +41,17 @@ class BatchPhysicalDynamicFilteringTableSourceScan(
     traitSet: RelTraitSet,
     hints: util.List[RelHint],
     tableSourceTable: TableSourceTable,
-    var input: RelNode) // var for updating
-  extends BatchPhysicalTableSourceScan(cluster, traitSet, hints, tableSourceTable) {
+    inputs: util.List[RelNode],
+    val uuid: String
+) extends BatchPhysicalTableSourceScan(cluster, traitSet, hints, tableSourceTable) {
+
+  def this(
+      cluster: RelOptCluster,
+      traitSet: RelTraitSet,
+      hints: util.List[RelHint],
+      tableSourceTable: TableSourceTable,
+      inputs: util.List[RelNode]) =
+    this(cluster, traitSet, hints, tableSourceTable, inputs, UUID.randomUUID.toString)
 
   override def copy(traitSet: RelTraitSet, inputs: util.List[RelNode]): RelNode = {
     new BatchPhysicalDynamicFilteringTableSourceScan(
@@ -49,7 +59,8 @@ class BatchPhysicalDynamicFilteringTableSourceScan(
       traitSet,
       getHints,
       tableSourceTable,
-      inputs.get(0))
+      inputs,
+      uuid)
   }
 
   override def copy(
@@ -60,22 +71,23 @@ class BatchPhysicalDynamicFilteringTableSourceScan(
       traitSet,
       getHints,
       tableSourceTable,
-      input)
+      inputs,
+      uuid)
   }
 
   override def replaceInput(ordinalInParent: Int, rel: RelNode): Unit = {
-    assert(ordinalInParent == 0)
-    this.input = rel
+    this.inputs.set(ordinalInParent, rel)
     recomputeDigest()
   }
 
   override def getInputs: util.List[RelNode] = {
-    ImmutableList.of(input)
+    ImmutableList.copyOf(inputs.toArray(Array[RelNode]()))
   }
 
   override def explainTerms(pw: RelWriter): RelWriter = {
-    // input should be the first item
-    pw.input("input", input)
+    for (i <- 0 until inputs.size()) {
+      pw.input("input#" + i, inputs.get(i))
+    }
     super.explainTerms(pw)
   }
 
@@ -84,12 +96,17 @@ class BatchPhysicalDynamicFilteringTableSourceScan(
       tableSourceTable.contextResolvedTable,
       util.Arrays.asList(tableSourceTable.abilitySpecs: _*))
     tableSourceSpec.setTableSource(tableSourceTable.tableSource)
+    val inputProperties = new util.ArrayList[InputProperty]
+    for (_ <- inputs.toArray) {
+      inputProperties.add(InputProperty.DEFAULT)
+    }
 
     new BatchExecTableSourceScan(
       unwrapTableConfig(this),
       tableSourceSpec,
-      InputProperty.DEFAULT,
+      inputProperties,
       FlinkTypeFactory.toLogicalRowType(getRowType),
-      getRelDetailedDescription)
+      getRelDetailedDescription,
+      uuid)
   }
 }

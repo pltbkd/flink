@@ -29,10 +29,16 @@ import org.apache.flink.streaming.api.operators.StreamOperatorParameters;
  */
 public class ExecutionOrderEnforcerOperatorFactory<IN> extends AbstractStreamOperatorFactory<IN> {
 
+    private final int numberOfInputs;
+
+    public ExecutionOrderEnforcerOperatorFactory(int numberOfInputs) {
+        this.numberOfInputs = numberOfInputs;
+    }
+
     @Override
     public <T extends StreamOperator<IN>> T createStreamOperator(
             StreamOperatorParameters<IN> parameters) {
-        return (T) new ExecutionOrderEnforcerOperator<>(parameters);
+        return (T) new ExecutionOrderEnforcerOperator<>(parameters, numberOfInputs);
     }
 
     @Override

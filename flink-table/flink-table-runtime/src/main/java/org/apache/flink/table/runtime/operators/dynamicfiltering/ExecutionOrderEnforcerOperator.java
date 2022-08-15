@@ -28,6 +28,8 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * ExecutionOrderEnforcerOperator has two inputs, one of which is a source, and the other is the
@@ -44,14 +46,19 @@ import java.util.List;
 public class ExecutionOrderEnforcerOperator<IN> extends AbstractStreamOperatorV2<IN>
         implements MultipleInputStreamOperator<IN> {
 
-    public ExecutionOrderEnforcerOperator(StreamOperatorParameters<IN> parameters) {
-        super(parameters, 2);
+    private final int numberOfInputs;
+
+    public ExecutionOrderEnforcerOperator(
+            StreamOperatorParameters<IN> parameters, int numberOfInputs) {
+        super(parameters, numberOfInputs);
+        this.numberOfInputs = numberOfInputs;
     }
 
     @Override
     public List<Input> getInputs() {
-        return Arrays.asList(
-                new ForwardingInput<>(this, 1, output), new ForwardingInput<>(this, 2, output));
+        return IntStream.range(1, numberOfInputs + 1)
+                .mapToObj(i -> new ForwardingInput<>(this, i, output))
+                .collect(Collectors.toList());
     }
 
     private static class ForwardingInput<IN> extends AbstractInput<IN, IN> {

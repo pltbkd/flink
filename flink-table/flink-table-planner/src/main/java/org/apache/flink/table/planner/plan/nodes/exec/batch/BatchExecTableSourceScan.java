@@ -29,6 +29,7 @@ import org.apache.flink.streaming.api.transformations.SourceTransformation;
 import org.apache.flink.table.connector.source.ScanTableSource;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.planner.delegation.PlannerBase;
+import org.apache.flink.table.planner.plan.nodes.exec.ExecEdge;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeConfig;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeContext;
@@ -42,8 +43,9 @@ import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.util.Preconditions;
 
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.UUID;
+import java.util.List;
 
 /**
  * Batch {@link ExecNode} to read data from an external source defined by a bounded {@link
@@ -53,8 +55,7 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
         implements BatchExecNode<RowData> {
 
     // Avoids creating different ids if translated multiple times
-    private final String dynamicFilteringDataListenerID = UUID.randomUUID().toString();
-
+    private final String dynamicFilteringDataListenerID;
     private boolean needDynamicFilteringDependency;
 
     // This constructor can be used only when table source scan has
@@ -62,17 +63,19 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
     public BatchExecTableSourceScan(
             ReadableConfig tableConfig,
             DynamicTableSourceSpec tableSourceSpec,
-            InputProperty inputProperty,
+            List<InputProperty> inputProperties,
             RowType outputType,
-            String description) {
+            String description,
+            String dynamicFilteringDataListenerID) {
         super(
                 ExecNodeContext.newNodeId(),
                 ExecNodeContext.newContext(BatchExecTableSourceScan.class),
                 ExecNodeContext.newPersistedConfig(BatchExecTableSourceScan.class, tableConfig),
                 tableSourceSpec,
-                Collections.singletonList(inputProperty),
+                inputProperties,
                 outputType,
                 description);
+        this.dynamicFilteringDataListenerID = dynamicFilteringDataListenerID;
     }
 
     public BatchExecTableSourceScan(
@@ -88,6 +91,7 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
                 Collections.emptyList(),
                 outputType,
                 description);
+        this.dynamicFilteringDataListenerID = null;
     }
 
     public void setNeedDynamicFilteringDependency(boolean needDynamicFilteringDependency) {
@@ -108,59 +112,59 @@ public class BatchExecTableSourceScan extends CommonExecTableSourceScan
             return transformation;
         }
 
-        // handle dynamic filtering
-        BatchExecDynamicFilteringDataCollector dynamicFilteringDataCollector =
-                getDynamicFilteringDataCollector(this);
+        List<Transformation<?>> dynamicFilteringInputTransformations = new ArrayList<>();
+        for (ExecEdge inputEdge : getInputEdges()) {
+            // handle dynamic filtering
+//            BatchExecDynamicFilteringDataCollector dynamicFilteringDataCollector =
+//                    getDynamicFilteringDataCollector((BatchExecNode<?>) inputEdge.getSource());
 
-        // Set the dynamic filtering data listener ids for both sides. Must use translateToPlan to
-        // avoid duplication.
-        Transformation<Object> dynamicFilteringTransform =
-                dynamicFilteringDataCollector.translateToPlan(planner);
-        ((SourceTransformation<?, ?, ?>) transformation)
-                .setCoordinatorListeningID(dynamicFilteringDataListenerID);
-        ((DynamicFilteringDataCollectorOperatorFactory)
-                        ((OneInputTransformation<?, ?>) dynamicFilteringTransform)
-                                .getOperatorFactory())
-                .registerDynamicFilteringDataListenerID(dynamicFilteringDataListenerID);
+            // Set the dynamic filtering data listener ids for both sides. Must use translateToPlan
+            // to avoid duplication.
+//            Transformation<Object> dynamicFilteringTransform =
+//                    dynamicFilteringDataCollector.translateToPlan(planner);
+            ((SourceTransformation<?, ?, ?>) transformation)
+                    .setCoordinatorListeningID(dynamicFilteringDataListenerID);
+//            ((DynamicFilteringDataCollectorOperatorFactory)
+//                            ((OneInputTransformation<?, ?>) dynamicFilteringTransform)
+//                                    .getOperatorFactory())
+//                    .registerDynamicFilteringDataListenerID(dynamicFilteringDataListenerID);
 
-        // Translate the predecessor nodes. Must use translateToPlan to avoid duplication.
-        BatchExecNode<?> input = (BatchExecNode<?>) getInputEdges().get(0).getSource();
-        Transformation<?> dynamicFilteringInputTransform = input.translateToPlan(planner);
+            // Translate the predecessor nodes. Must use translateToPlan to avoid duplication.
+            BatchExecNode<?> input = (BatchExecNode<?>) inputEdge.getSource();
+            dynamicFilteringInputTransformations.add(input.translateToPlan(planner));
+        }
 
         if (!needDynamicFilteringDependency) {
-            planner.addExtraTransformation(dynamicFilteringInputTransform);
+            dynamicFilteringInputTransformations.forEach(planner::addExtraTransformation);
             return transformation;
         } else {
             MultipleInputTransformation<RowData> multipleInputTransformation =
                     new MultipleInputTransformation<>(
                             "Order-Enforcer",
-                            new ExecutionOrderEnforcerOperatorFactory<>(),
+                            new ExecutionOrderEnforcerOperatorFactory<>(
+                                    1 + dynamicFilteringInputTransformations.size()),
                             transformation.getOutputType(),
                             transformation.getParallelism());
-            multipleInputTransformation.addInput(dynamicFilteringInputTransform);
+            dynamicFilteringInputTransformations.forEach(multipleInputTransformation::addInput);
             multipleInputTransformation.addInput(transformation);
 
             return multipleInputTransformation;
         }
     }
 
-    private BatchExecDynamicFilteringDataCollector getDynamicFilteringDataCollector(
-            BatchExecNode<?> node) {
-        Preconditions.checkState(
-                node.getInputEdges().size() == 1,
-                "The fact source must have one "
-                        + "input representing dynamic filtering data collector");
-        BatchExecNode<?> input = (BatchExecNode<?>) node.getInputEdges().get(0).getSource();
-        if (input instanceof BatchExecDynamicFilteringDataCollector) {
-            return (BatchExecDynamicFilteringDataCollector) input;
-        }
-
-        Preconditions.checkState(
-                input instanceof BatchExecExchange,
-                "There could only be BatchExecExchange "
-                        + "between fact source and dynamic filtering data collector");
-        return getDynamicFilteringDataCollector(input);
-    }
+//    private BatchExecDynamicFilteringDataCollector getDynamicFilteringDataCollector(
+//            BatchExecNode<?> input) {
+//        if (input instanceof BatchExecDynamicFilteringDataCollector) {
+//            return (BatchExecDynamicFilteringDataCollector) input;
+//        }
+//
+//        Preconditions.checkState(
+//                input instanceof BatchExecExchange,
+//                "There could only be BatchExecExchange "
+//                        + "between fact source and dynamic filtering data collector");
+//        return getDynamicFilteringDataCollector(
+//                (BatchExecNode<?>) input.getInputEdges().get(0).getSource());
+//    }
 
     @Override
     public Transformation<RowData> createInputFormatTransformation(

@@ -26,6 +26,7 @@ import org.apache.flink.streaming.api.operators.AbstractStreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.CoordinatedOperatorFactory;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.StreamOperatorParameters;
+import org.apache.flink.table.runtime.operators.dynamicfiltering.DynamicFilteringDataCollectorOperator.FilterConfig;
 import org.apache.flink.table.types.logical.RowType;
 
 import java.util.ArrayList;
@@ -40,17 +41,19 @@ public class DynamicFilteringDataCollectorOperatorFactory
         extends AbstractStreamOperatorFactory<Object>
         implements CoordinatedOperatorFactory<Object> {
 
-    private final Set<String> dynamicFilteringDataListenerIDs = new HashSet<>();
-    private final RowType dynamicFilteringFieldType;
-    private final List<Integer> dynamicFilteringFieldIndices;
+    //    private final Set<String> dynamicFilteringDataListenerIDs = new HashSet<>();
+    //    private final RowType dynamicFilteringFieldType;
+    //    private final List<Integer> dynamicFilteringFieldIndices;
+    private final RowType inputType;
+    List<FilterConfig> filterConfigs;
     private final long threshold;
 
     public DynamicFilteringDataCollectorOperatorFactory(
-            RowType dynamicFilteringFieldType,
-            List<Integer> dynamicFilteringFieldIndices,
-            long threshold) {
-        this.dynamicFilteringFieldType = checkNotNull(dynamicFilteringFieldType);
-        this.dynamicFilteringFieldIndices = checkNotNull(dynamicFilteringFieldIndices);
+            RowType inputType, List<FilterConfig> filterConfigs, long threshold) {
+        this.inputType = inputType;
+        this.filterConfigs = filterConfigs;
+        //        this.dynamicFilteringFieldType = checkNotNull(dynamicFilteringFieldType);
+        //        this.dynamicFilteringFieldIndices = checkNotNull(dynamicFilteringFieldIndices);
         this.threshold = threshold;
     }
 
@@ -64,10 +67,7 @@ public class DynamicFilteringDataCollectorOperatorFactory
 
         DynamicFilteringDataCollectorOperator operator =
                 new DynamicFilteringDataCollectorOperator(
-                        dynamicFilteringFieldType,
-                        dynamicFilteringFieldIndices,
-                        threshold,
-                        operatorEventGateway);
+                        inputType, filterConfigs, threshold, operatorEventGateway);
 
         operator.setup(
                 parameters.getContainingTask(),
@@ -81,10 +81,6 @@ public class DynamicFilteringDataCollectorOperatorFactory
         return castedOperator;
     }
 
-    public void registerDynamicFilteringDataListenerID(String id) {
-        this.dynamicFilteringDataListenerIDs.add(checkNotNull(id));
-    }
-
     @SuppressWarnings("rawtypes")
     @Override
     public Class<? extends StreamOperator> getStreamOperatorClass(ClassLoader classLoader) {
@@ -94,7 +90,6 @@ public class DynamicFilteringDataCollectorOperatorFactory
     @Override
     public OperatorCoordinator.Provider getCoordinatorProvider(
             String operatorName, OperatorID operatorID) {
-        return new DynamicFilteringDataCollectorOperatorCoordinator.Provider(
-                operatorID, new ArrayList<>(dynamicFilteringDataListenerIDs));
+        return new DynamicFilteringDataCollectorOperatorCoordinator.Provider(operatorID);
     }
 }

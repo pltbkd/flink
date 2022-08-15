@@ -25,7 +25,9 @@ import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeutils.base.array.BytePrimitiveArraySerializer;
 import org.apache.flink.api.connector.source.ReaderOutput;
+import org.apache.flink.api.connector.source.RuntimeFilter;
 import org.apache.flink.api.connector.source.SourceEvent;
+import org.apache.flink.api.connector.source.SourceOutput;
 import org.apache.flink.api.connector.source.SourceReader;
 import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.api.connector.source.SourceSplit;
@@ -40,6 +42,7 @@ import org.apache.flink.runtime.metrics.groups.InternalSourceReaderMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.OperatorEventGateway;
 import org.apache.flink.runtime.operators.coordination.OperatorEventHandler;
+import org.apache.flink.runtime.source.coordinator.RuntimeFilterEvent;
 import org.apache.flink.runtime.source.event.AddSplitEvent;
 import org.apache.flink.runtime.source.event.NoMoreSplitsEvent;
 import org.apache.flink.runtime.source.event.ReaderRegistrationEvent;
@@ -70,6 +73,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -156,6 +160,9 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
             new SourceOperatorAvailabilityHelper();
 
     private final List<SplitT> outputPendingSplits = new ArrayList<>();
+
+    // all and, TODO support or with expression tree, maybe need filter uuid?
+    private final List<RuntimeFilter<OUT>> runtimeFilters = new ArrayList<>();
 
     private enum OperatingMode {
         READING,
@@ -424,6 +431,9 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
 
     private void initializeMainOutput(DataOutput<OUT> output) {
         currentMainOutput = eventTimeLogic.createMainOutput(output, this::onWatermarkEmitted);
+        if (!runtimeFilters.isEmpty()) {
+            currentMainOutput = new FilteringReaderOutput(currentMainOutput, this::doRuntimeFilter);
+        }
         initializeLatencyMarkerEmitter(output);
         lastInvokedOutput = output;
         // Create per-split output for pending splits added before main output is initialized
@@ -525,12 +535,33 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
         } else if (event instanceof AddSplitEvent) {
             handleAddSplitsEvent(((AddSplitEvent<SplitT>) event));
         } else if (event instanceof SourceEventWrapper) {
-            sourceReader.handleSourceEvents(((SourceEventWrapper) event).getSourceEvent());
+            SourceEvent sourceEvent = ((SourceEventWrapper) event).getSourceEvent();
+            if (sourceEvent instanceof RuntimeFilterEvent) {
+                // TODO check type?
+                // String uuid = ((RuntimeFilterEvent<OUT>) sourceEvent).getReceiverUUID();
+                this.runtimeFilters.add(((RuntimeFilterEvent<OUT>) sourceEvent).getFilter());
+                if (currentMainOutput != null) {
+                    // event receives after init, since init happens while restoring, TODO confirm?
+                    currentMainOutput =
+                            new FilteringReaderOutput(currentMainOutput, this::doRuntimeFilter);
+                }
+            } else {
+                sourceReader.handleSourceEvents(((SourceEventWrapper) event).getSourceEvent());
+            }
         } else if (event instanceof NoMoreSplitsEvent) {
             sourceReader.notifyNoMoreSplits();
         } else {
             throw new IllegalStateException("Received unexpected operator event " + event);
         }
+    }
+
+    private boolean doRuntimeFilter(OUT out) {
+        for (RuntimeFilter<OUT> filter : runtimeFilters) {
+            if (!filter.match(out)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void handleAddSplitsEvent(AddSplitEvent<SplitT> event) {
@@ -627,6 +658,98 @@ public class SourceOperator<OUT, SplitT extends SourceSplit> extends AbstractStr
 
         public void forceStop() {
             forcedStopFuture.complete(null);
+        }
+    }
+
+    private class FilteringReaderOutput implements ReaderOutput<OUT> {
+
+        private final ReaderOutput<OUT> delegatedOutput;
+        private final Function<OUT, Boolean> filter;
+
+        public FilteringReaderOutput(
+                ReaderOutput<OUT> delegatedOutput, Function<OUT, Boolean> filter) {
+            this.delegatedOutput = delegatedOutput;
+            this.filter = filter;
+        }
+
+        @Override
+        public void collect(OUT record) {
+            if (filter.apply(record)) {
+                delegatedOutput.collect(record);
+            }
+        }
+
+        @Override
+        public void collect(OUT record, long timestamp) {
+            if (filter.apply(record)) {
+                delegatedOutput.collect(record, timestamp);
+            }
+        }
+
+        @Override
+        public void emitWatermark(org.apache.flink.api.common.eventtime.Watermark watermark) {
+            delegatedOutput.emitWatermark(watermark);
+        }
+
+        @Override
+        public void markIdle() {
+            delegatedOutput.markIdle();
+        }
+
+        @Override
+        public SourceOutput<OUT> createOutputForSplit(String splitId) {
+            return new FilteringSourceOutput(delegatedOutput.createOutputForSplit(splitId), filter);
+        }
+
+        @Override
+        public void releaseOutputForSplit(String splitId) {
+            delegatedOutput.releaseOutputForSplit(splitId);
+        }
+
+        @Override
+        public void markActive() {
+            delegatedOutput.markActive();
+        }
+    }
+
+    private class FilteringSourceOutput implements SourceOutput<OUT> {
+
+        private final SourceOutput<OUT> delegatedOutput;
+        private final Function<OUT, Boolean> filter;
+
+        public FilteringSourceOutput(
+                SourceOutput<OUT> delegatedOutput, Function<OUT, Boolean> filter) {
+            this.delegatedOutput = delegatedOutput;
+            this.filter = filter;
+        }
+
+        @Override
+        public void emitWatermark(org.apache.flink.api.common.eventtime.Watermark watermark) {
+            delegatedOutput.emitWatermark(watermark);
+        }
+
+        @Override
+        public void markIdle() {
+            delegatedOutput.markIdle();
+        }
+
+        @Override
+        public void markActive() {
+            delegatedOutput.markActive();
+        }
+
+        @Override
+        public void collect(OUT record) {
+            if (filter.apply(record)) {
+                delegatedOutput.collect(record);
+            }
+        }
+
+        @Override
+        public void collect(OUT record, long timestamp) {
+            if (filter.apply(record)) {
+                delegatedOutput.collect(record, timestamp);
+            }
         }
     }
 }

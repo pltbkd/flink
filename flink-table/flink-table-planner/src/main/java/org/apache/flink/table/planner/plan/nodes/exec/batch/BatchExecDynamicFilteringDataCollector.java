@@ -34,6 +34,7 @@ import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeConfig;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeContext;
 import org.apache.flink.table.planner.plan.nodes.exec.InputProperty;
 import org.apache.flink.table.planner.plan.nodes.exec.utils.ExecNodeUtil;
+import org.apache.flink.table.runtime.operators.dynamicfiltering.DynamicFilteringDataCollectorOperator.FilterConfig;
 import org.apache.flink.table.runtime.operators.dynamicfiltering.DynamicFilteringDataCollectorOperatorFactory;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.types.logical.RowType;
@@ -64,10 +65,12 @@ public class BatchExecDynamicFilteringDataCollector extends ExecNodeBase<Object>
                                     + AkkaOptions.FRAMESIZE.key()
                                     + "). Otherwise a DynamicFilterEvent with all deduplicated records will be sent to Coordinator.");
 
-    private final List<Integer> dynamicFilteringFieldIndices;
+//    private final List<Integer> dynamicFilteringFieldIndices;
+    List<FilterConfig> filterConfigs;
 
     public BatchExecDynamicFilteringDataCollector(
-            List<Integer> dynamicFilteringFieldIndices,
+//            List<Integer> dynamicFilteringFieldIndices,
+            List<FilterConfig> filterConfigs,
             ReadableConfig tableConfig,
             InputProperty inputProperty,
             RowType outputType,
@@ -79,8 +82,9 @@ public class BatchExecDynamicFilteringDataCollector extends ExecNodeBase<Object>
                 Collections.singletonList(inputProperty),
                 outputType,
                 description);
-        this.dynamicFilteringFieldIndices = dynamicFilteringFieldIndices;
-        checkArgument(outputType.getFieldCount() == dynamicFilteringFieldIndices.size());
+//        this.dynamicFilteringFieldIndices = dynamicFilteringFieldIndices;
+        this.filterConfigs=filterConfigs;
+//        checkArgument(outputType.getFieldCount() == dynamicFilteringFieldIndices.size());
     }
 
     @Override
@@ -93,7 +97,7 @@ public class BatchExecDynamicFilteringDataCollector extends ExecNodeBase<Object>
         StreamOperatorFactory<Object> factory =
                 new DynamicFilteringDataCollectorOperatorFactory(
                         (RowType) getOutputType(),
-                        dynamicFilteringFieldIndices,
+                        filterConfigs,
                         config.get(TABLE_EXEC_DYNAMIC_FILTERING_THRESHOLD).getBytes());
 
         return ExecNodeUtil.createOneInputTransformation(

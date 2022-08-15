@@ -22,17 +22,21 @@ import org.apache.flink.table.planner.plan.nodes.exec.{ExecNode, InputProperty}
 import org.apache.flink.table.planner.plan.nodes.exec.batch.BatchExecDynamicFilteringDataCollector
 import org.apache.flink.table.planner.utils.JavaScalaConversionUtil
 import org.apache.flink.table.planner.utils.ShortcutUtils.unwrapTableConfig
+import org.apache.flink.table.runtime.operators.dynamicfiltering.DynamicFilteringDataCollectorOperator
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel.`type`.RelDataType
 import org.apache.calcite.rel.{RelNode, RelWriter, SingleRel}
+
+import java.util
 
 class BatchPhysicalDynamicFilteringDataCollector(
     cluster: RelOptCluster,
     traitSet: RelTraitSet,
     input: RelNode,
     outputType: RelDataType,
-    val dynamicFilteringFieldIndices: Array[Int]
+    val filterConfigs: util.List[DynamicFilteringDataCollectorOperator.FilterConfig]
+//    val dynamicFilteringFieldIndices: Array[Int]
 ) extends SingleRel(cluster, traitSet, input)
   with BatchPhysicalRel {
 
@@ -44,22 +48,19 @@ class BatchPhysicalDynamicFilteringDataCollector(
       traitSet,
       inputs.get(0),
       outputType,
-      dynamicFilteringFieldIndices)
+      filterConfigs)
   }
 
   override def explainTerms(pw: RelWriter): RelWriter = {
     super
       .explainTerms(pw)
-      .item(
-        "fields",
-        dynamicFilteringFieldIndices
-          .map(i => getInput.getRowType.getFieldNames.get(i))
-          .mkString(","))
+      .item("fields", filterConfigs)
   }
 
   override def translateToExecNode(): ExecNode[_] = {
     new BatchExecDynamicFilteringDataCollector(
-      JavaScalaConversionUtil.toJava(dynamicFilteringFieldIndices.map(i => Integer.valueOf(i))),
+//      JavaScalaConversionUtil.toJava(dynamicFilteringFieldIndices.map(i => Integer.valueOf(i))),
+      filterConfigs,
       unwrapTableConfig(this),
       InputProperty.DEFAULT,
       FlinkTypeFactory.toLogicalRowType(getRowType),
