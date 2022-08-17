@@ -55,6 +55,6 @@ public class RuntimeFilterEvent<T> implements SourceEvent {
 
     @Override
     public String toString() {
-        return "RuntimeFilterEvent{uuid=" + receiverUUID + "}";
+        return "RuntimeFilterEvent{uuid=" + receiverUUID + ", receiverType=" + receiverType + "}";
     }
 }

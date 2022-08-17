@@ -88,7 +88,7 @@ class BatchPhysicalDynamicFilteringTableSourceScan(
     for (i <- 0 until inputs.size()) {
       pw.input("input#" + i, inputs.get(i))
     }
-    super.explainTerms(pw)
+    super.explainTerms(pw).item("uuid", uuid)
   }
 
   override def translateToExecNode(): ExecNode[_] = {

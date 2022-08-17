@@ -305,7 +305,7 @@ public class DynamicFilteringDataCollectorOperator extends AbstractStreamOperato
         private final List<FieldGetter> dimKeyGetters;
 
         // TODO config?
-        private int bloomFilterByteSize = 64 * 1024 * 1024;
+        private int bloomFilterByteSize = 4 * 1024 * 1024;
 
         private List<SerializableFunction<RowData, Object>> factKeyExtractors;
 
